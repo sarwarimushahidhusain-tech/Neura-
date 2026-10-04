@@ -1,0 +1,219 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-sans);
+  --font-mono: var(--font-geist-mono);
+  
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  
+  --color-indigo: #4F46E5;
+  --color-deep-indigo: #312E81;
+  --color-electric: #2563EB;
+  --color-violet: #7C3AED;
+  --color-mint: #0EA5A4;
+  --color-coral: #F9735B;
+  --color-cinematic: #0B1020;
+
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) * 1.4);
+  --radius-2xl: calc(var(--radius) * 1.8);
+}
+
+:root {
+  /* LIGHT-FIRST AURORA THEME */
+  --background: #F7F8FC;
+  --foreground: #0F172A;
+  --card: #FFFFFF;
+  --card-foreground: #0F172A;
+  --popover: #FFFFFF;
+  --popover-foreground: #0F172A;
+  --primary: #4F46E5;
+  --primary-foreground: #FFFFFF;
+  --secondary: #EEF4FF;
+  --secondary-foreground: #2563EB;
+  --muted: #F1F5F9;
+  --muted-foreground: #475569;
+  --accent: #F3EEFF;
+  --accent-foreground: #7C3AED;
+  --destructive: #F9735B;
+  --destructive-foreground: #FFFFFF;
+  --border: #E2E8F0;
+  --input: #E2E8F0;
+  --ring: #4F46E5;
+  --radius: 0.75rem;
+}
+
+.dark-cinematic {
+  /* DARK CINEMATIC THEME (Used in Generate) */
+  --background: #0B1020;
+  --foreground: #F8FAFC;
+  --card: rgba(255, 255, 255, 0.04);
+  --card-foreground: #F8FAFC;
+  --popover: #0F172A;
+  --popover-foreground: #F8FAFC;
+  --primary: #4F46E5;
+  --primary-foreground: #FFFFFF;
+  --secondary: rgba(255, 255, 255, 0.1);
+  --secondary-foreground: #F8FAFC;
+  --muted: rgba(255, 255, 255, 0.08);
+  --muted-foreground: #94A3B8;
+  --accent: rgba(124, 58, 237, 0.15);
+  --accent-foreground: #C4B5FD;
+  --border: rgba(255, 255, 255, 0.1);
+  --input: rgba(255, 255, 255, 0.1);
+  --ring: #4F46E5;
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+  html {
+    @apply font-sans;
+  }
+}
+
+/* =============================================
+   GLOBAL MOTION SYSTEM
+   ============================================= */
+@layer utilities {
+  .transition-fast {
+    transition-duration: 175ms;
+    transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+  }
+  .transition-normal {
+    transition-duration: 300ms;
+    transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+  }
+  .transition-slow {
+    transition-duration: 500ms;
+    transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+  }
+}
+
+.reveal-on-scroll {
+  opacity: 0;
+  transform: translateY(16px);
+  transition: opacity 0.55s cubic-bezier(0.4, 0, 0.2, 1),
+              transform 0.55s cubic-bezier(0.4, 0, 0.2, 1);
+}
+.reveal-on-scroll.is-visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+.reveal-on-scroll.delay-100 { transition-delay: 100ms; }
+.reveal-on-scroll.delay-200 { transition-delay: 200ms; }
+.reveal-on-scroll.delay-300 { transition-delay: 300ms; }
+.reveal-on-scroll.delay-400 { transition-delay: 400ms; }
+
+@media (prefers-reduced-motion: reduce) {
+  .reveal-on-scroll { opacity: 1; transform: none; transition: none; }
+  .animate-aurora, .animate-signal, [class*="animate-"] { animation: none !important; }
+}
+
+/* =============================================
+   AURORA GLOW
+   ============================================= */
+@keyframes aurora-flow {
+  0% { transform: rotate(0deg) scale(1) translate(0, 0); }
+  33% { transform: rotate(5deg) scale(1.05) translate(2%, 2%); }
+  66% { transform: rotate(-5deg) scale(0.95) translate(-2%, -2%); }
+  100% { transform: rotate(0deg) scale(1) translate(0, 0); }
+}
+
+.aurora-bg {
+  position: absolute;
+  inset: -20%;
+  z-index: -1;
+  pointer-events: none;
+  background: 
+    radial-gradient(circle at 20% 30%, rgba(79, 70, 229, 0.15) 0%, transparent 40%),
+    radial-gradient(circle at 80% 20%, rgba(124, 58, 237, 0.1) 0%, transparent 40%),
+    radial-gradient(circle at 50% 70%, rgba(14, 165, 164, 0.08) 0%, transparent 40%);
+  animation: aurora-flow 18s ease-in-out infinite;
+  filter: blur(60px);
+}
+
+.dark-cinematic .aurora-bg {
+  background: 
+    radial-gradient(circle at 20% 30%, rgba(79, 70, 229, 0.25) 0%, transparent 50%),
+    radial-gradient(circle at 80% 20%, rgba(124, 58, 237, 0.2) 0%, transparent 50%);
+  filter: blur(80px);
+}
+
+/* =============================================
+   NEURA SIGNAL
+   ============================================= */
+@keyframes signal-flow {
+  0% { transform: translateX(-100%); opacity: 0; }
+  20% { opacity: 1; }
+  80% { opacity: 1; }
+  100% { transform: translateX(100%); opacity: 0; }
+}
+
+.neura-signal {
+  position: relative;
+  overflow: hidden;
+}
+.neura-signal::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,0.4), transparent);
+  animation: signal-flow 2s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+}
+
+/* =============================================
+   COMPONENT UTILITIES
+   ============================================= */
+.card-lift {
+  transition: transform 250ms ease, box-shadow 250ms ease, border-color 250ms ease;
+}
+.card-lift:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 12px 32px rgba(15, 23, 42, 0.04), 0 4px 8px rgba(15, 23, 42, 0.02);
+}
+
+.neura-grid-light {
+  background-image:
+    linear-gradient(to right, rgba(15, 23, 42, 0.03) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(15, 23, 42, 0.03) 1px, transparent 1px);
+  background-size: 40px 40px;
+}
+
+.neura-grid-dark {
+  background-image:
+    linear-gradient(to right, rgba(255, 255, 255, 0.03) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(255, 255, 255, 0.03) 1px, transparent 1px);
+  background-size: 40px 40px;
+}
