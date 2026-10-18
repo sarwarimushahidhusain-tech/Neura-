@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -13,38 +13,9 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
-import { Search, SlidersHorizontal, PlayCircle, Clock, Trophy } from "lucide-react";
+import { Search, SlidersHorizontal, PlayCircle, Clock, Trophy, Database, Sparkles } from "lucide-react";
 import type { Project } from "@/types";
-
-const MOCK_PROJECTS: Project[] = [
-  {
-    id: "p1",
-    title: "How the Human Heart Pumps Blood",
-    date: "Just now",
-    category: "Science",
-    style: "3D Cinematic",
-    model: "HunyuanVideo",
-    score: 91,
-  },
-  {
-    id: "p2",
-    title: "Newton's Laws of Motion",
-    date: "2 days ago",
-    category: "Physics",
-    style: "Educational",
-    model: "LTX",
-    score: 88,
-  },
-  {
-    id: "p3",
-    title: "How Photosynthesis Works",
-    date: "5 days ago",
-    category: "Biology",
-    style: "Stylized 3D",
-    model: "CogVideoX",
-    score: 86,
-  },
-];
+import { getProjects, PUBLIC_SHOWCASE_PROJECTS } from "@/lib/projects";
 
 const CATEGORIES = ["All", "Science", "Physics", "Biology", "History", "Creative"];
 const SORT_OPTIONS = [
@@ -58,9 +29,24 @@ export default function ProjectsPage() {
   const [search, setSearch] = useState("");
   const [category, setCategory] = useState("All");
   const [sort, setSort] = useState("newest");
+  const [projectsList, setProjectsList] = useState<Project[]>(PUBLIC_SHOWCASE_PROJECTS);
+  const [isLiveDb, setIsLiveDb] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+    getProjects().then(({ projects, isLiveDb: live }) => {
+      if (active) {
+        setProjectsList(projects);
+        setIsLiveDb(live);
+      }
+    });
+    return () => {
+      active = false;
+    };
+  }, []);
 
   const filtered = useMemo(() => {
-    let list = MOCK_PROJECTS.filter((p) => {
+    let list = projectsList.filter((p) => {
       const matchSearch = p.title
         .toLowerCase()
         .includes(search.toLowerCase());
@@ -71,7 +57,7 @@ export default function ProjectsPage() {
     if (sort === "score-asc") list = [...list].sort((a, b) => a.score - b.score);
     if (sort === "oldest") list = [...list].reverse();
     return list;
-  }, [search, category, sort]);
+  }, [projectsList, search, category, sort]);
 
   // CSS placeholders for different subjects
   const renderThumbnail = (project: Project) => {
@@ -115,7 +101,20 @@ export default function ProjectsPage() {
       {/* Header */}
       <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 mb-10 animate-in fade-in slide-in-from-bottom-4 duration-500">
         <div>
-          <h1 className="text-4xl font-bold tracking-tight mb-2 text-foreground">My Projects</h1>
+          <div className="flex items-center gap-3 mb-2">
+            <h1 className="text-4xl font-bold tracking-tight text-foreground">My Projects</h1>
+            {isLiveDb ? (
+              <Badge variant="outline" className="text-xs border-primary/30 text-primary gap-1">
+                <Database className="w-3 h-3" />
+                <span>Supabase RLS Protected</span>
+              </Badge>
+            ) : (
+              <Badge variant="secondary" className="text-xs text-muted-foreground gap-1">
+                <Sparkles className="w-3 h-3 text-primary" />
+                <span>Showcase Gallery</span>
+              </Badge>
+            )}
+          </div>
           <p className="text-muted-foreground text-lg">Your generated visual stories.</p>
         </div>
         <Link href="/create">
@@ -196,7 +195,7 @@ export default function ProjectsPage() {
 
                 {/* Hover overlay */}
                 <div className="absolute inset-0 bg-black/20 group-hover:bg-black/40 transition-colors duration-300" />
-                
+
                 <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-300 transform scale-95 group-hover:scale-100">
                   <div className="h-14 w-14 rounded-full bg-white/20 backdrop-blur-md flex items-center justify-center border border-white/30 shadow-lg">
                     <PlayCircle className="w-8 h-8 text-white ml-1" />
@@ -207,6 +206,16 @@ export default function ProjectsPage() {
                   <Badge className="bg-black/60 backdrop-blur-md border-white/10 text-white text-[10px] font-medium tracking-wide">
                     {project.category}
                   </Badge>
+                  {project.jobStatus === "awaiting_video_provider" && (
+                    <Badge variant="outline" className="border-amber-500/40 text-amber-300 bg-black/60 text-[10px]">
+                      Awaiting Video Provider
+                    </Badge>
+                  )}
+                  {project.jobStatus === "completed" && (
+                    <Badge className="bg-emerald-600/80 text-white text-[10px]">
+                      Ready
+                    </Badge>
+                  )}
                 </div>
 
                 <div className="absolute bottom-3 right-3">
@@ -241,7 +250,17 @@ export default function ProjectsPage() {
                   >
                     {project.style}
                   </Badge>
-                  <Link href="/result">
+                  <Link
+                    href="/result"
+                    onClick={() => {
+                      if (typeof window !== "undefined") {
+                        localStorage.setItem("neura_topic", project.title);
+                        if (project.masterPrompt) {
+                          localStorage.setItem("neura_master_prompt", project.masterPrompt);
+                        }
+                      }
+                    }}
+                  >
                     <Button
                       variant="ghost"
                       size="sm"

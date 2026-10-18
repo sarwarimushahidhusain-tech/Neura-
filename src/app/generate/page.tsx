@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -12,121 +12,119 @@ import {
   Copy,
   RefreshCw,
   Play,
-  Trophy,
   Check,
   ArrowRight,
+  AlertCircle,
+  ExternalLink,
+  Film,
+  Zap,
 } from "lucide-react";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 
-type Stage = "planning" | "reviewing" | "generating" | "evaluating" | "complete";
+type Stage = "planning" | "reviewing" | "generating" | "complete";
 
 const DEFAULT_PROMPT =
   "Create a scientifically accurate cinematic 3D medical visualization of the human heart. Show the complete anatomical heart with realistic cardiac tissue and clearly visible chambers and major blood vessels. Transition into a semi-transparent cutaway view revealing the right atrium, left atrium, right ventricle, left ventricle, and major valves. Visualize oxygen-poor blood entering the right side of the heart and oxygen-rich blood leaving the left ventricle through the aorta. Use smooth camera movement, realistic lighting, scientifically grounded anatomy, clean educational presentation, and consistent anatomical structure throughout the video. Dark blue scientific background, high visual clarity, no text overlays, no subtitles, no watermark.";
 
 const PREP_STEPS = [
-  "Understanding your topic",
-  "Creating scene plan",
-  "Building Master Prompt",
+  "Structuring educational plan with Qwen",
+  "Choreographing camera & 3D lighting",
+  "Assembling Master Video Prompt for LTX",
 ];
 
-const MODEL_SPEEDS: Record<"LTX" | "HunyuanVideo" | "CogVideoX", number> = {
-  LTX: 1.5,
-  HunyuanVideo: 1.2,
-  CogVideoX: 0.8,
-};
-
-const MOCK_SCORES: Record<"LTX" | "HunyuanVideo" | "CogVideoX", number> = {
-  LTX: 84,
-  HunyuanVideo: 91,
-  CogVideoX: 79,
-};
-
-// Colors based on instruction
-const MODEL_COLORS: Record<"LTX" | "HunyuanVideo" | "CogVideoX", string> = {
-  LTX: "bg-[#2563EB] text-white", // Electric blue
-  HunyuanVideo: "bg-[#7C3AED] text-white", // Violet
-  CogVideoX: "bg-[#4F46E5] text-white", // Indigo
-};
-const MODEL_BARS: Record<"LTX" | "HunyuanVideo" | "CogVideoX", string> = {
-  LTX: "bg-[#2563EB]",
-  HunyuanVideo: "bg-[#7C3AED]",
-  CogVideoX: "bg-[#4F46E5]",
-};
+const VIDEO_MODELS = [
+  {
+    id: "Lightricks/LTX-2.5",
+    name: "Hugging Face LTX 2.5",
+    badge: "Official HF Model Hub",
+    provider: "huggingface",
+    cost: "HF Model Hub",
+    description: "Official Lightricks LTX 2.5 high-definition 3D video generation model on Hugging Face",
+    isRecommended: true,
+  },
+  {
+    id: "Lightricks/ltx-video-distilled",
+    name: "Hugging Face LTX Lite (Distilled)",
+    badge: "HF Fast Distilled",
+    provider: "huggingface",
+    cost: "HF Model Hub",
+    description: "Lightweight distilled LTX 2.5 3D video model on Hugging Face for accelerated generation",
+    isRecommended: false,
+  },
+  {
+    id: "ltx-2-5-lite",
+    name: "Pixazo LTX 2.5 Lite",
+    badge: "Realtime 3D Engine",
+    provider: "pixazo",
+    cost: "$0.45 (5s @ 720p)",
+    description: "Ultra-fast, lightweight 3D cinematic video generation powered by Pixazo Gateway",
+    isRecommended: false,
+  },
+  {
+    id: "Wan-AI/Wan2.1-T2V-1.3B",
+    name: "Wan 2.1 (1.3B)",
+    badge: "Hugging Face Inference",
+    provider: "huggingface",
+    cost: "HF Serverless Credits",
+    description: "Open-source diffusion model on Hugging Face router",
+    isRecommended: false,
+  },
+  {
+    id: "tencent/HunyuanVideo",
+    name: "HunyuanVideo",
+    badge: "Cinematic High Res",
+    provider: "huggingface",
+    cost: "HF Serverless Credits",
+    description: "High parameter text-to-video diffusion model",
+    isRecommended: false,
+  },
+];
 
 export default function GeneratePage() {
   const router = useRouter();
   const [stage, setStage] = useState<Stage>("planning");
   const [prepProgress, setPrepProgress] = useState(0);
-  const [ltxProg, setLtxProg] = useState(0);
-  const [hunyuanProg, setHunyuanProg] = useState(0);
-  const [cogProg, setCogProg] = useState(0);
   const [topic, setTopic] = useState("How the Human Heart Pumps Blood");
   const [masterPrompt, setMasterPrompt] = useState(DEFAULT_PROMPT);
   const [originalPrompt] = useState(DEFAULT_PROMPT);
+  const [selectedModel, setSelectedModel] = useState("Lightricks/LTX-2.5");
   const [copyState, setCopyState] = useState<"idle" | "copied">("idle");
   const [saveState, setSaveState] = useState<"idle" | "saving" | "saved">("idle");
   const [hasUnsaved, setHasUnsaved] = useState(false);
-  const [animatedScores, setAnimatedScores] = useState({ LTX: 0, HunyuanVideo: 0, CogVideoX: 0 });
-  const allDone = ltxProg >= 100 && hunyuanProg >= 100 && cogProg >= 100;
-  const scoreAnimRef = useRef(false);
+
+  // Generation & Asynchronous Polling State
+  const [isCallingApi, setIsCallingApi] = useState(false);
+  const [jobProgress, setJobProgress] = useState(20);
+  const [generationError, setGenerationError] = useState<string | null>(null);
+  const [generationErrorCode, setGenerationErrorCode] = useState<string | null>(null);
+  const pollingRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
     if (typeof window !== "undefined") {
       const saved = localStorage.getItem("neura_topic");
       if (saved) setTimeout(() => setTopic(saved), 0);
+      const savedPrompt = localStorage.getItem("neura_master_prompt");
+      if (savedPrompt) setTimeout(() => setMasterPrompt(savedPrompt), 0);
     }
+
+    return () => {
+      if (pollingRef.current) clearInterval(pollingRef.current);
+    };
   }, []);
 
   useEffect(() => {
     if (stage !== "planning") return;
     const timer = setInterval(() => {
       setPrepProgress((p) => {
-        if (p >= 100) { clearInterval(timer); return 100; }
-        return p + 2;
+        if (p >= 100) {
+          clearInterval(timer);
+          return 100;
+        }
+        return p + 4;
       });
-    }, 50);
+    }, 40);
     return () => clearInterval(timer);
-  }, [stage]);
-
-  useEffect(() => {
-    if (stage !== "generating") return;
-    const t1 = setInterval(() => setLtxProg((p) => Math.min(p + MODEL_SPEEDS.LTX, 100)), 80);
-    const t2 = setInterval(() => setHunyuanProg((p) => Math.min(p + MODEL_SPEEDS.HunyuanVideo, 100)), 80);
-    const t3 = setInterval(() => setCogProg((p) => Math.min(p + MODEL_SPEEDS.CogVideoX, 100)), 80);
-    return () => { clearInterval(t1); clearInterval(t2); clearInterval(t3); };
-  }, [stage]);
-
-  useEffect(() => {
-    if (stage === "generating" && allDone) {
-      setTimeout(() => setStage("evaluating"), 300);
-    }
-  }, [stage, allDone]);
-
-  useEffect(() => {
-    if (stage === "evaluating") {
-      setTimeout(() => setStage("complete"), 2000);
-    }
-  }, [stage]);
-
-  useEffect(() => {
-    if (stage !== "complete" || scoreAnimRef.current) return;
-    scoreAnimRef.current = true;
-    const duration = 1200;
-    const step = 16;
-    let elapsed = 0;
-    const interval = setInterval(() => {
-      elapsed += step;
-      const t = Math.min(elapsed / duration, 1);
-      const ease = 1 - Math.pow(1 - t, 3);
-      setAnimatedScores({
-        LTX: Math.round(MOCK_SCORES.LTX * ease),
-        HunyuanVideo: Math.round(MOCK_SCORES.HunyuanVideo * ease),
-        CogVideoX: Math.round(MOCK_SCORES.CogVideoX * ease),
-      });
-      if (t >= 1) clearInterval(interval);
-    }, step);
-    return () => clearInterval(interval);
   }, [stage]);
 
   const handleCopy = useCallback(() => {
@@ -138,12 +136,15 @@ export default function GeneratePage() {
 
   const handleSave = useCallback(() => {
     setSaveState("saving");
+    if (typeof window !== "undefined") {
+      localStorage.setItem("neura_master_prompt", masterPrompt);
+    }
     setTimeout(() => {
       setSaveState("saved");
       setHasUnsaved(false);
       setTimeout(() => setSaveState("idle"), 2000);
-    }, 700);
-  }, []);
+    }, 500);
+  }, [masterPrompt]);
 
   const handlePromptChange = (val: string) => {
     setMasterPrompt(val);
@@ -157,26 +158,144 @@ export default function GeneratePage() {
     setSaveState("idle");
   };
 
+  const activeModelObj =
+    VIDEO_MODELS.find((m) => m.id === selectedModel) || VIDEO_MODELS[0];
+
+  // Start polling an in-flight asynchronous generation job
+  const pollJobStatus = (jobId: string) => {
+    if (pollingRef.current) clearInterval(pollingRef.current);
+
+    let attempts = 0;
+    const maxAttempts = 40; // 40 * 3s = 120s timeout limit
+
+    pollingRef.current = setInterval(async () => {
+      attempts++;
+      try {
+        const res = await fetch(`/api/video/status/${jobId}`);
+        const data = await res.json();
+
+        if (!res.ok || !data.success) {
+          if (pollingRef.current) clearInterval(pollingRef.current);
+          setIsCallingApi(false);
+          setGenerationError(data.error || "Failed to retrieve job status.");
+          setGenerationErrorCode(data.code || "STATUS_CHECK_FAILED");
+          return;
+        }
+
+        const job = data.job;
+
+        if (job.status === "completed") {
+          if (pollingRef.current) clearInterval(pollingRef.current);
+          setIsCallingApi(false);
+          if (job.videoUrl && typeof window !== "undefined") {
+            localStorage.setItem("neura_video_url", job.videoUrl);
+          }
+          setStage("complete");
+        } else if (job.status === "failed") {
+          if (pollingRef.current) clearInterval(pollingRef.current);
+          setIsCallingApi(false);
+          setGenerationError(job.error || "Video generation failed on provider.");
+          setGenerationErrorCode(job.errorCode || "GENERATION_FAILED");
+        } else {
+          // Job still queued or processing
+          setJobProgress(job.progressPercent || Math.min(30 + attempts * 2, 90));
+        }
+      } catch (err: unknown) {
+        if (attempts >= maxAttempts) {
+          if (pollingRef.current) clearInterval(pollingRef.current);
+          setIsCallingApi(false);
+          const msg = err instanceof Error ? err.message : "Polling timed out.";
+          setGenerationError(`Generation timed out: ${msg}`);
+          setGenerationErrorCode("POLLING_TIMEOUT");
+        }
+      }
+    }, 3000);
+  };
+
+  // Video Generation Dispatch (Pixazo LTX 2.5 Lite or Hugging Face)
+  const handleStartGeneration = async () => {
+    setStage("generating");
+    setIsCallingApi(true);
+    setJobProgress(20);
+    setGenerationError(null);
+    setGenerationErrorCode(null);
+
+    try {
+      const res = await fetch("/api/video/generate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          topic,
+          masterPrompt,
+          model: selectedModel,
+          provider: activeModelObj.provider,
+          durationSeconds: 5,
+          aspectRatio: "16:9",
+        }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok || !data.success) {
+        const errMsg = data.job?.error || data.error || "Video generation failed.";
+        setGenerationError(errMsg);
+        setGenerationErrorCode(data.job?.errorCode || data.code || "GENERATION_FAILED");
+        if (data.job?.jobId && typeof window !== "undefined") {
+          localStorage.setItem("neura_job_id", data.job.jobId);
+        }
+        setIsCallingApi(false);
+        return;
+      }
+
+      const jobId = data.job?.jobId;
+      if (jobId && typeof window !== "undefined") {
+        localStorage.setItem("neura_job_id", jobId);
+      }
+
+      // Fast synchronous completion (e.g. data URL returned directly)
+      if (data.job?.status === "completed" && data.job?.videoUrl) {
+        if (typeof window !== "undefined") {
+          localStorage.setItem("neura_video_url", data.job.videoUrl);
+        }
+        setIsCallingApi(false);
+        setStage("complete");
+        return;
+      }
+
+      // Asynchronous job accepted by Pixazo/provider: start polling status
+      if (jobId) {
+        pollJobStatus(jobId);
+      } else {
+        setIsCallingApi(false);
+        setGenerationError("No job identifier returned by provider.");
+      }
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Network error contacting video pipeline.";
+      setGenerationError(msg);
+      setGenerationErrorCode("NETWORK_ERROR");
+      setIsCallingApi(false);
+    }
+  };
+
   const prepStageIdx = Math.floor(prepProgress / (100 / PREP_STEPS.length));
 
   return (
     <div className="dark-cinematic min-h-[calc(100vh-64px)] w-full bg-background text-foreground flex flex-col relative overflow-hidden transition-colors duration-1000">
-      
       {/* Background elements */}
       <div className="absolute inset-0 neura-grid-dark opacity-10 pointer-events-none" />
       <div className="aurora-bg" />
 
-      {/* ─── PLANNING ─── */}
+      {/* ─── STAGE 1: PLANNING PREVIEW ─── */}
       {stage === "planning" && (
         <div className="container mx-auto px-4 py-16 max-w-2xl flex flex-col items-center text-center relative z-10 flex-1 justify-center">
-          <div className="mb-2 inline-flex items-center gap-2 text-xs text-muted-foreground font-mono bg-white/5 border border-white/10 px-3 py-1 rounded-full animate-pulse">
-            Simulation Preview
+          <div className="mb-2 inline-flex items-center gap-2 text-xs text-primary font-mono bg-primary/10 border border-primary/20 px-3 py-1 rounded-full">
+            Hugging Face Qwen Planning Engine
           </div>
           <h1 className="text-3xl md:text-5xl font-bold tracking-tight mb-3 mt-4 text-foreground">
-            Processing Idea
+            Structuring Concept
           </h1>
           <p className="text-muted-foreground mb-10 text-lg">
-            Neura is structuring your topic into a visual blueprint.
+            Neura has synthesized your topic into a structured visual blueprint.
           </p>
 
           <Card className="w-full bg-black/40 backdrop-blur-xl border-white/10 shadow-2xl">
@@ -228,7 +347,7 @@ export default function GeneratePage() {
             }`}
           >
             <p className="text-sm text-[#0EA5A4] mb-5 flex items-center gap-2 justify-center font-medium">
-              <CheckCircle2 className="h-4 w-4" /> Planning complete
+              <CheckCircle2 className="h-4 w-4" /> Ready for Model Dispatch
             </p>
             <Button
               size="lg"
@@ -241,85 +360,122 @@ export default function GeneratePage() {
         </div>
       )}
 
-      {/* ─── REVIEW / EDIT MASTER PROMPT ─── */}
+      {/* ─── STAGE 2: REVIEW / SELECT MODEL ─── */}
       {stage === "reviewing" && (
         <div className="container mx-auto px-4 py-8 max-w-6xl relative z-10 animate-in fade-in slide-in-from-bottom-4 duration-500">
           <div className="mb-8">
             <h1 className="text-3xl font-bold tracking-tight mb-2 text-foreground">
-              Review Master Prompt
+              Review Master Prompt & Video Engine
             </h1>
             <p className="text-muted-foreground">
-              The AI will strictly follow this version. Modify it as needed.
+              Lesson plan created by Hugging Face Qwen. Choose your AI video renderer below.
             </p>
           </div>
 
           <div className="grid lg:grid-cols-3 gap-8">
-            {/* AI Plan Sidebar */}
-            <div className="lg:col-span-1">
-              <Card className="bg-black/40 backdrop-blur-xl border-white/10 h-full">
+            {/* Sidebar: Model Selector & Settings */}
+            <div className="lg:col-span-1 space-y-6">
+              <Card className="bg-black/40 backdrop-blur-xl border-white/10">
                 <CardHeader className="border-b border-white/10 pb-4">
                   <CardTitle className="text-base flex items-center gap-2 text-foreground">
                     <Sparkles className="w-4 h-4 text-primary" />
-                    AI Plan
+                    Video Generation Engine
                   </CardTitle>
                 </CardHeader>
-                <CardContent className="p-5 space-y-6 text-sm">
-                  <div>
-                    <div className="text-muted-foreground text-xs mb-1 font-mono uppercase">Topic</div>
-                    <div className="font-medium text-foreground">{topic}</div>
-                  </div>
-                  <div className="grid grid-cols-2 gap-4">
-                    {[
-                      ["Style", "Cinematic 3D"],
-                      ["Ratio", "16:9"],
-                      ["Duration", "10 sec"],
-                      ["Audience", "College"],
-                    ].map(([k, v]) => (
-                      <div key={k}>
-                        <div className="text-muted-foreground text-xs mb-0.5 font-mono uppercase">{k}</div>
-                        <div className="font-medium text-foreground">{v}</div>
-                      </div>
-                    ))}
-                  </div>
-                  <div>
-                    <div className="text-muted-foreground text-xs mb-3 font-mono uppercase">Scene Plan</div>
-                    <ol className="space-y-3 relative pl-6 before:absolute before:left-[11px] before:inset-y-0 before:w-px before:bg-white/10">
-                      {[
-                        "Show complete external heart.",
-                        "Reveal chambers and major valves.",
-                        "Visualize oxygen-poor blood on right.",
-                        "Visualize oxygen-rich blood leaving aorta.",
-                      ].map((s, i) => (
-                        <li key={i} className="relative text-foreground/90">
-                          <div className="absolute -left-6 top-0 h-6 w-6 rounded-full bg-black/60 border border-primary/40 flex items-center justify-center text-[10px] text-primary">
-                            {i + 1}
+                <CardContent className="p-5 space-y-4">
+                  <div className="space-y-2">
+                    <label className="text-xs font-mono uppercase text-muted-foreground">Select Model</label>
+                    <div className="space-y-2.5">
+                      {VIDEO_MODELS.map((m) => (
+                        <button
+                          key={m.id}
+                          type="button"
+                          onClick={() => setSelectedModel(m.id)}
+                          className={`w-full text-left p-3.5 rounded-xl border text-xs transition-all relative ${
+                            selectedModel === m.id
+                              ? "border-primary bg-primary/10 shadow-[0_0_15px_rgba(15,164,175,0.25)] text-white ring-1 ring-primary/40"
+                              : "border-white/10 bg-white/5 hover:border-white/20 text-slate-300"
+                          }`}
+                        >
+                          <div className="flex justify-between items-center mb-1">
+                            <span className="font-semibold flex items-center gap-1.5">
+                              {m.name}
+                              {m.isRecommended && (
+                                <Zap className="w-3 h-3 text-amber-400 fill-amber-400" />
+                              )}
+                            </span>
+                            <Badge variant="outline" className={`border-primary/40 text-[10px] py-0 ${m.isRecommended ? "bg-primary/20 text-primary border-primary" : ""}`}>
+                              {m.badge}
+                            </Badge>
                           </div>
-                          {s}
-                        </li>
+                          <p className="text-[11px] text-slate-400 mb-1 leading-snug">
+                            {m.description}
+                          </p>
+                          <div className="flex justify-between items-center text-[10px] text-muted-foreground font-mono pt-1 border-t border-white/5">
+                            <span>Cost: {m.cost}</span>
+                            <span className="uppercase">{m.provider}</span>
+                          </div>
+                        </button>
                       ))}
-                    </ol>
+                    </div>
                   </div>
+
+                  <div className="pt-2 border-t border-white/10 space-y-2 text-xs">
+                    <div className="flex justify-between text-muted-foreground">
+                      <span>Gateway Provider</span>
+                      <span className="font-mono text-foreground font-semibold">
+                        {activeModelObj.provider === "pixazo" ? "Pixazo Gateway" : "Hugging Face Router"}
+                      </span>
+                    </div>
+                    <div className="flex justify-between text-muted-foreground">
+                      <span>Target Duration</span>
+                      <span className="font-mono text-foreground">5 Seconds (Safe Initial Test)</span>
+                    </div>
+                    <div className="flex justify-between text-muted-foreground">
+                      <span>Resolution</span>
+                      <span className="font-mono text-foreground">720p (3D High Definition)</span>
+                    </div>
+                    <div className="flex justify-between text-muted-foreground">
+                      <span>Estimated Cost</span>
+                      <span className="font-mono text-emerald-400 font-semibold">
+                        {activeModelObj.provider === "pixazo" ? "$0.45" : "HF Account Credits"}
+                      </span>
+                    </div>
+                  </div>
+
+                  {activeModelObj.provider === "pixazo" ? (
+                    <div className="p-3 rounded-lg bg-primary/10 border border-primary/20 text-[11px] text-slate-200 leading-relaxed">
+                      <strong>Pixazo LTX 2.5 Lite:</strong> Generates asynchronous high-fidelity educational video. Uses your server-side <code className="text-primary font-mono">PIXAZO_API_KEY</code>.
+                    </div>
+                  ) : activeModelObj.id.includes("LTX") ? (
+                    <div className="p-3 rounded-lg bg-primary/10 border border-primary/20 text-[11px] text-slate-200 leading-relaxed">
+                      <strong>Hugging Face LTX 2.5:</strong> Lightricks 3D text-to-video open weights model hosted on Hugging Face Hub. Uses your server-side <code className="text-primary font-mono">HF_TOKEN</code>.
+                    </div>
+                  ) : (
+                    <div className="p-3 rounded-lg bg-amber-500/10 border border-amber-500/20 text-[11px] text-amber-300 leading-relaxed">
+                      <strong>Hugging Face Serverless:</strong> Requires pre-paid inference credits or PRO subscription on Hugging Face.
+                    </div>
+                  )}
                 </CardContent>
               </Card>
             </div>
 
             {/* Prompt Editor */}
             <div className="lg:col-span-2 flex flex-col gap-4">
-              <Card className="flex-1 bg-[#EEF4FF] dark-cinematic:bg-[#EEF4FF] border-white/10 shadow-lg flex flex-col overflow-hidden text-slate-900">
-                {/* Custom light editor surface within the dark page */}
+              <Card className="flex-1 bg-[#EEF4FF] border-white/10 shadow-lg flex flex-col overflow-hidden text-slate-900">
                 <div className="flex items-center justify-between px-5 py-3 border-b border-slate-200 bg-white gap-3">
                   <div className="flex items-center gap-3 text-xs">
                     <span className="text-slate-500 font-mono">
                       {masterPrompt.length} chars
                     </span>
                     {hasUnsaved && (
-                      <span className="text-amber-600 flex items-center gap-1 animate-in fade-in duration-300">
+                      <span className="text-amber-600 flex items-center gap-1">
                         <span className="h-2 w-2 rounded-full bg-amber-500 animate-pulse" />
                         Unsaved changes
                       </span>
                     )}
                     {saveState === "saved" && !hasUnsaved && (
-                      <span className="text-emerald-600 flex items-center gap-1 animate-in fade-in duration-300">
+                      <span className="text-emerald-600 flex items-center gap-1">
                         <Check className="h-3 w-3" /> Saved
                       </span>
                     )}
@@ -328,7 +484,7 @@ export default function GeneratePage() {
                     <Button
                       variant="ghost"
                       size="sm"
-                      className="h-8 px-3 text-xs text-slate-600 hover:bg-slate-100 hover:text-slate-900"
+                      className="h-8 px-3 text-xs text-slate-600 hover:bg-slate-100"
                       onClick={handleCopy}
                     >
                       {copyState === "copied" ? (
@@ -340,7 +496,7 @@ export default function GeneratePage() {
                     <Button
                       variant="ghost"
                       size="sm"
-                      className="h-8 px-3 text-xs text-slate-600 hover:bg-slate-100 hover:text-slate-900"
+                      className="h-8 px-3 text-xs text-slate-600 hover:bg-slate-100"
                       onClick={handleResetPrompt}
                     >
                       <RefreshCw className="mr-1 h-3 w-3" />Reset
@@ -348,7 +504,7 @@ export default function GeneratePage() {
                     {hasUnsaved && (
                       <Button
                         size="sm"
-                        className="h-8 px-3 text-xs bg-indigo-100 text-indigo-700 hover:bg-indigo-200 border border-indigo-200"
+                        className="h-8 px-3 text-xs bg-indigo-100 text-indigo-700 hover:bg-indigo-200"
                         onClick={handleSave}
                       >
                         {saveState === "saving" ? "Saving…" : "Save changes"}
@@ -360,7 +516,7 @@ export default function GeneratePage() {
                 <CardContent className="p-0 flex-1 flex flex-col bg-white">
                   <Textarea
                     aria-label="Master prompt editor"
-                    className="flex-1 min-h-[340px] resize-none bg-transparent border-0 text-base p-6 focus-visible:ring-0 leading-relaxed font-mono text-slate-800"
+                    className="flex-1 min-h-[320px] resize-none bg-transparent border-0 text-sm p-6 focus-visible:ring-0 leading-relaxed font-mono text-slate-800"
                     value={masterPrompt}
                     onChange={(e) => handlePromptChange(e.target.value)}
                   />
@@ -371,10 +527,9 @@ export default function GeneratePage() {
                 <Button
                   size="lg"
                   className="bg-primary hover:bg-primary/90 text-primary-foreground h-14 px-8 text-base shadow-lg transition-all duration-200 hover:-translate-y-0.5 group relative overflow-hidden"
-                  onClick={() => setStage("generating")}
+                  onClick={handleStartGeneration}
                 >
-                  <div className="absolute inset-0 neura-signal opacity-0 group-hover:opacity-100 transition-opacity" />
-                  <Play className="w-4 h-4 mr-2" /> Approve & Generate
+                  <Play className="w-4 h-4 mr-2" /> Approve & Generate with {activeModelObj.name}
                 </Button>
               </div>
             </div>
@@ -382,138 +537,196 @@ export default function GeneratePage() {
         </div>
       )}
 
-      {/* ─── GENERATING / EVALUATING / COMPLETE ─── */}
-      {(stage === "generating" || stage === "evaluating" || stage === "complete") && (
-        <div className="container mx-auto px-4 py-16 max-w-5xl flex flex-col items-center relative z-10 flex-1 justify-center animate-in fade-in duration-700">
-          <div className="mb-4 inline-flex items-center gap-2 text-xs text-muted-foreground font-mono bg-white/5 border border-white/10 px-3 py-1 rounded-full">
-            Simulation Preview
-          </div>
-
-          <h1 className="text-3xl md:text-5xl font-bold tracking-tight mb-4 text-center text-foreground">
-            {stage === "generating" && "Generating Videos"}
-            {stage === "evaluating" && "Evaluating Results…"}
-            {stage === "complete" && "Best Result Selected"}
-          </h1>
-          <p className="text-muted-foreground mb-12 text-center text-lg max-w-xl">
-            {stage === "generating"
-              ? "Parallel generation across multiple AI video models."
-              : stage === "evaluating"
-              ? "Comparing outputs for visual quality, accuracy, and motion."
-              : "Neura evaluated all models and selected the most cinematic and accurate result."}
-          </p>
-
-          <div className="grid md:grid-cols-3 gap-6 w-full mb-12">
-            {(["LTX", "HunyuanVideo", "CogVideoX"] as const).map((model) => {
-              const prog = { LTX: ltxProg, HunyuanVideo: hunyuanProg, CogVideoX: cogProg }[model];
-              const done = prog >= 100;
-              const isBest = model === "HunyuanVideo" && stage === "complete";
-              const badgeColor = MODEL_COLORS[model];
-              const barColor = MODEL_BARS[model];
-
-              return (
-                <Card
-                  key={model}
-                  className={`transition-all duration-700 overflow-hidden relative ${
-                    isBest
-                      ? "border-[#7C3AED] bg-black/60 shadow-[0_0_40px_rgba(124,58,237,0.3)] scale-105 z-10"
-                      : "bg-black/40 border-white/10"
-                  }`}
-                >
-                  {isBest && (
-                    <div className="absolute inset-0 bg-gradient-to-b from-[#7C3AED]/10 to-transparent pointer-events-none" />
-                  )}
-
-                  <CardHeader className="pb-2 pt-5 px-6 relative z-10">
-                    <CardTitle className="text-base flex justify-between items-center text-foreground">
-                      <span>{model}</span>
-                      {stage === "complete" ? (
-                        isBest ? (
-                          <Badge className="bg-[#7C3AED] text-white border-0 text-xs shadow-md">
-                            <Trophy className="h-3 w-3 mr-1" />Best Result
-                          </Badge>
-                        ) : (
-                          <Badge className="bg-[#0EA5A4]/20 text-[#0EA5A4] border-0 text-xs">
-                            Done
-                          </Badge>
-                        )
-                      ) : done ? (
-                        <Badge className="bg-[#0EA5A4]/20 text-[#0EA5A4] border-0 text-xs">
-                          <CheckCircle2 className="h-3 w-3 mr-1" />Done
-                        </Badge>
-                      ) : (
-                        <Badge className={`${badgeColor} border-0 text-xs shadow-sm`}>
-                          {prog > 0 ? "Generating" : "Queued"}
-                        </Badge>
-                      )}
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent className="px-6 pb-6 space-y-5 relative z-10">
-                    <div className="space-y-2">
-                      <div className="flex justify-between text-xs text-muted-foreground font-mono">
-                        <span>Progress</span>
-                        <span>{Math.floor(prog)}%</span>
-                      </div>
-                      {/* Custom progress bar to support different colors */}
-                      <div className="h-2 w-full overflow-hidden rounded-full bg-white/10">
-                        <div
-                          className={`h-full transition-all duration-300 ease-out ${barColor}`}
-                          style={{ width: `${prog}%` }}
-                        />
-                      </div>
-                    </div>
-
-                    {stage === "complete" && (
-                      <div className="pt-2 animate-in fade-in slide-in-from-bottom-2 duration-700">
-                        <div className="flex justify-between text-xs text-muted-foreground mb-1.5 font-mono">
-                          <span>Evaluation Score</span>
-                          <span className={`font-bold text-sm ${isBest ? "text-[#7C3AED]" : "text-foreground"}`}>
-                            {animatedScores[model]}<span className="text-muted-foreground text-xs font-normal">/100</span>
-                          </span>
-                        </div>
-                        <div className="h-2 w-full overflow-hidden rounded-full bg-white/10">
-                          <div
-                            className={`h-full transition-all duration-300 ease-out ${isBest ? "bg-[#7C3AED]" : "bg-white/30"}`}
-                            style={{ width: `${animatedScores[model]}%` }}
-                          />
-                        </div>
-                      </div>
-                    )}
-                  </CardContent>
-                </Card>
-              );
-            })}
-          </div>
-
-          {stage === "evaluating" && (
-            <div className="flex flex-col items-center gap-3 text-foreground mb-8 animate-in fade-in duration-500">
-              <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center mb-2">
-                <Loader2 className="h-6 w-6 animate-spin text-primary" />
+      {/* ─── STAGE 3: GENERATING OR ERROR STATUS ─── */}
+      {(stage === "generating" || stage === "complete") && (
+        <div className="container mx-auto px-4 py-16 max-w-3xl flex flex-col items-center relative z-10 flex-1 justify-center animate-in fade-in duration-700">
+          {/* Active Generation State */}
+          {isCallingApi && (
+            <div className="text-center space-y-6 w-full">
+              <div className="w-16 h-16 rounded-3xl bg-primary/20 border border-primary/40 flex items-center justify-center mx-auto relative">
+                <Loader2 className="w-8 h-8 text-primary animate-spin" />
+                <div className="absolute inset-0 rounded-3xl bg-primary/20 animate-ping opacity-40" />
               </div>
-              <div className="text-sm font-medium tracking-wide uppercase text-primary">Running Analysis</div>
+              <h2 className="text-3xl font-bold tracking-tight text-foreground">
+                Generating 3D Educational Video
+              </h2>
+              <p className="text-muted-foreground text-sm max-w-md mx-auto">
+                Processing through <strong>{activeModelObj.name}</strong> ({activeModelObj.provider === "pixazo" ? "Pixazo Gateway" : "Hugging Face"}).
+              </p>
+              <div className="w-full max-w-md mx-auto space-y-2">
+                <Progress value={jobProgress} className="h-1.5 bg-white/10" />
+                <span className="text-xs text-muted-foreground font-mono">
+                  {jobProgress < 30 ? "Stage: Queued on gateway..." : "Stage: Asynchronous 3D synthesis in progress..."}
+                </span>
+              </div>
             </div>
           )}
 
-          <div
-            className={`transition-all duration-1000 ${
-              stage === "complete" ? "opacity-100 translate-y-0" : "opacity-0 translate-y-8 pointer-events-none absolute"
-            }`}
-          >
-            <div className="text-center mb-8">
-              <h2 className="text-2xl font-bold mb-2 flex items-center justify-center gap-3 text-foreground">
-                <Trophy className="h-6 w-6 text-[#7C3AED]" />
-                HunyuanVideo Selected
+          {/* Error / Credits Blocked State */}
+          {!isCallingApi && generationError && (
+            <Card className="w-full bg-black/60 backdrop-blur-2xl border-destructive/40 shadow-2xl overflow-hidden animate-in fade-in slide-in-from-bottom-2">
+              <div className="p-6 md:p-8 space-y-6">
+                <div className="flex items-start gap-4">
+                  <div className="w-12 h-12 rounded-2xl bg-destructive/10 border border-destructive/30 flex items-center justify-center text-destructive shrink-0">
+                    <AlertCircle className="w-6 h-6" />
+                  </div>
+                  <div className="space-y-1.5 flex-1">
+                    <div className="flex items-center justify-between">
+                      <h3 className="text-lg font-bold text-white">Video Rendering Status</h3>
+                      <Badge variant="outline" className="border-destructive/40 text-destructive text-xs font-mono">
+                        {generationErrorCode || "FAILED"}
+                      </Badge>
+                    </div>
+                    <p className="text-xs text-slate-300 leading-relaxed">
+                      {generationError}
+                    </p>
+                  </div>
+                </div>
+
+                {generationErrorCode === "PIXAZO_KEY_MISSING" && (
+                  <div className="p-4 rounded-xl bg-primary/10 border border-primary/20 text-xs text-slate-200 space-y-2">
+                    <p className="font-semibold flex items-center gap-1.5 text-primary">
+                      <ExternalLink className="w-3.5 h-3.5" />
+                      Configure Pixazo API Key
+                    </p>
+                    <p className="text-[11px] text-slate-300 leading-relaxed">
+                      To generate video using Pixazo LTX 2.5 Lite, add your subscription key to your private <code className="bg-black/40 px-1 py-0.5 rounded font-mono text-primary">.env.local</code> file:
+                    </p>
+                    <pre className="bg-black/60 p-2.5 rounded font-mono text-[11px] text-slate-300 border border-white/10">
+                      PIXAZO_API_KEY=your_pixazo_key_here
+                    </pre>
+                    <a
+                      href="https://pixazo.ai"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1 text-xs text-primary font-semibold underline hover:text-primary/80 pt-1"
+                    >
+                      Get a Pixazo API Key at pixazo.ai <ExternalLink className="w-3 h-3" />
+                    </a>
+                  </div>
+                )}
+
+                {generationErrorCode === "PIXAZO_INSUFFICIENT_FUNDS" && (
+                  <div className="p-4 rounded-xl bg-amber-500/10 border border-amber-500/20 text-xs text-amber-200 space-y-2">
+                    <p className="font-semibold flex items-center gap-1.5">
+                      <ExternalLink className="w-3.5 h-3.5" />
+                      Pixazo Account Balance Required
+                    </p>
+                    <p className="text-[11px] text-amber-300/90 leading-relaxed">
+                      Your Pixazo account balance has insufficient funds. Top up your balance on Pixazo.ai to render videos. Your prompt and educational plan remain saved.
+                    </p>
+                    <a
+                      href="https://pixazo.ai"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1 text-xs text-amber-400 font-semibold underline hover:text-amber-300 pt-1"
+                    >
+                      Manage Pixazo Billing <ExternalLink className="w-3 h-3" />
+                    </a>
+                  </div>
+                )}
+
+                {generationErrorCode === "HF_CREDITS_EXHAUSTED" && (
+                  <div className="p-4 rounded-xl bg-amber-500/10 border border-amber-500/20 text-xs text-amber-200 space-y-2">
+                    <p className="font-semibold flex items-center gap-1.5">
+                      <ExternalLink className="w-3.5 h-3.5" />
+                      Hugging Face Inference Credit Required
+                    </p>
+                    <p className="text-[11px] text-amber-300/90 leading-relaxed">
+                      Hugging Face serverless inference requires pre-paid credits. Alternatively, select Pixazo LTX 2.5 Lite.
+                    </p>
+                    <a
+                      href="https://huggingface.co/settings/billing"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1 text-xs text-amber-400 font-semibold underline hover:text-amber-300 pt-1"
+                    >
+                      Manage Hugging Face Billing & Credits <ExternalLink className="w-3 h-3" />
+                    </a>
+                  </div>
+                )}
+
+                {generationErrorCode === "HF_MODEL_NOT_SUPPORTED" && (
+                  <div className="p-4 rounded-xl bg-primary/10 border border-primary/20 text-xs text-slate-200 space-y-2">
+                    <p className="font-semibold flex items-center gap-1.5 text-primary">
+                      <ExternalLink className="w-3.5 h-3.5" />
+                      Hugging Face LTX 2.5 Model Hub
+                    </p>
+                    <p className="text-[11px] text-slate-300 leading-relaxed">
+                      The official Lightricks LTX 2.5 model is an open-weights diffusion model on Hugging Face Hub. To render video directly via serverless GPU without setting up a dedicated GPU cluster, you can switch to the <strong>Pixazo LTX 2.5 Lite</strong> engine.
+                    </p>
+                    <div className="flex flex-wrap items-center gap-2 pt-1">
+                      <Button
+                        size="sm"
+                        onClick={() => {
+                          setSelectedModel("ltx-2-5-lite");
+                          setStage("reviewing");
+                        }}
+                        className="bg-primary text-black hover:bg-primary/90 text-xs font-semibold h-8"
+                      >
+                        Switch to Pixazo LTX 2.5 Lite
+                      </Button>
+                      <a
+                        href="https://huggingface.co/Lightricks/LTX-2.5"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1 text-xs text-primary font-semibold underline hover:text-primary/80 px-2 py-1"
+                      >
+                        View LTX 2.5 on Hugging Face <ExternalLink className="w-3 h-3" />
+                      </a>
+                    </div>
+                  </div>
+                )}
+
+                <div className="flex flex-col sm:flex-row items-center justify-end gap-3 pt-2">
+                  <Button
+                    variant="outline"
+                    onClick={() => setStage("reviewing")}
+                    className="w-full sm:w-auto border-white/20 hover:bg-white/10 text-white"
+                  >
+                    Change Model / Settings
+                  </Button>
+                  <Button
+                    variant="outline"
+                    onClick={handleStartGeneration}
+                    className="w-full sm:w-auto border-white/20 hover:bg-white/10 text-white"
+                  >
+                    <RefreshCw className="w-4 h-4 mr-2" />
+                    Retry Generation
+                  </Button>
+                  <Button
+                    onClick={() => router.push("/result")}
+                    className="w-full sm:w-auto bg-primary hover:bg-primary/90 text-primary-foreground font-semibold"
+                  >
+                    View Lesson Plan & Prompt <ArrowRight className="w-4 h-4 ml-2" />
+                  </Button>
+                </div>
+              </div>
+            </Card>
+          )}
+
+          {/* Success / Completed State */}
+          {!isCallingApi && stage === "complete" && !generationError && (
+            <div className="text-center space-y-6 animate-in fade-in">
+              <div className="w-16 h-16 rounded-3xl bg-emerald-500/20 border border-emerald-500/40 flex items-center justify-center mx-auto text-emerald-400 shadow-[0_0_30px_rgba(16,185,129,0.3)]">
+                <CheckCircle2 className="w-8 h-8" />
+              </div>
+              <h2 className="text-3xl font-bold tracking-tight text-white">
+                Educational Video Generated
               </h2>
-              <p className="text-muted-foreground">Score 91/100 · 3D Cinematic · 16:9</p>
+              <p className="text-slate-400 text-sm max-w-md mx-auto">
+                Model: <strong>{activeModelObj.name}</strong> • High-Definition 3D Animation Rendered
+              </p>
+              <Button
+                size="lg"
+                onClick={() => router.push("/result")}
+                className="bg-primary hover:bg-primary/90 text-primary-foreground h-14 px-10 text-lg shadow-xl"
+              >
+                <Film className="w-5 h-5 mr-2" />
+                View Rendered Video & Lesson Plan
+              </Button>
             </div>
-            <Button
-              size="lg"
-              onClick={() => router.push("/result")}
-              className="bg-primary hover:bg-primary/90 text-primary-foreground h-14 px-10 text-lg shadow-[0_0_30px_rgba(79,70,229,0.4)] hover:shadow-[0_0_40px_rgba(79,70,229,0.6)] transition-all duration-300 hover:-translate-y-1 relative overflow-hidden group"
-            >
-              <div className="absolute inset-0 neura-signal opacity-100" />
-              View Final Video
-            </Button>
-          </div>
+          )}
         </div>
       )}
     </div>
