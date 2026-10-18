@@ -40,4 +40,9 @@ export interface Project {
   model: string;
   score: number;
   thumbnail?: string;
+  topic?: string;
+  masterPrompt?: string;
+  jobStatus?: string;
+  videoUrl?: string;
+  isPrivate?: boolean;
 }
