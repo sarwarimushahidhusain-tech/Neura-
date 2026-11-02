@@ -26,6 +26,8 @@ import type {
 interface QuizProps {
   mcqSet: McqSetSafe;
   onRetake: () => void;
+  /** Optional library_video_id to attach to the saved quiz_attempts row */
+  videoId?: string;
 }
 
 type QuizPhase = "answering" | "submitting" | "results";
@@ -210,7 +212,7 @@ function ScoreDisplay({
 // ---------------------------------------------------------------------------
 // Main Quiz component
 // ---------------------------------------------------------------------------
-export default function InteractiveQuiz({ mcqSet, onRetake }: QuizProps) {
+export default function InteractiveQuiz({ mcqSet, onRetake, videoId }: QuizProps) {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [answers, setAnswers] = useState<Record<number, number>>({});
   const [phase, setPhase] = useState<QuizPhase>("answering");
@@ -248,12 +250,16 @@ export default function InteractiveQuiz({ mcqSet, onRetake }: QuizProps) {
       const res = await fetch("/api/ai/mcqs", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ setId: mcqSet.id, answers: quizAnswers }),
+        body: JSON.stringify({ setId: mcqSet.id, answers: quizAnswers, videoId: videoId ?? null }),
       });
 
       const data = await res.json();
       if (!res.ok) {
         throw new Error(data.error || "Failed to submit quiz.");
+      }
+
+      if (data.recordWarning) {
+        console.warn("[InteractiveQuiz] Persistence note:", data.recordWarning);
       }
 
       setResult(data.result as QuizResult);

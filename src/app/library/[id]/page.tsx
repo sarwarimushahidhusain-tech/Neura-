@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useState, use, useCallback } from "react";
+import { useEffect, useState, use, useCallback, useRef } from "react";
 import Link from "next/link";
 import Image from "next/image";
+import { useSearchParams } from "next/navigation";
 import {
   ArrowLeft,
   Clock,
@@ -17,6 +18,7 @@ import {
   RotateCw,
   CheckCircle2,
   BookOpen,
+  Loader2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -24,6 +26,9 @@ import { Card } from "@/components/ui/card";
 import InteractiveQuiz from "@/components/quiz/InteractiveQuiz";
 import type { LibraryVideo } from "@/types/library";
 import type { StudyNotes, McqSetSafe } from "@/types/phase4";
+import { useVideoTracker } from "@/lib/dashboard/useVideoTracker";
+import { useStudySession } from "@/lib/dashboard/useStudySession";
+import { getStoredUser } from "@/lib/auth";
 
 function formatDuration(seconds: number): string {
   const m = Math.floor(seconds / 60);
@@ -38,6 +43,26 @@ export default function VideoDetailPage({
 }) {
   const resolvedParams = use(params);
   const videoId = resolvedParams.id;
+  const searchParams = useSearchParams();
+
+  // Video element ref for tracking
+  const videoRef = useRef<HTMLVideoElement>(null);
+
+  // Auth user (client-side)
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setIsAuthenticated(!!getStoredUser());
+    }, 0);
+    return () => clearTimeout(timer);
+  }, []);
+
+  // Saved position from URL ?t= param or from server progress
+  const tParam = searchParams.get("t");
+  const parsedT = tParam ? parseInt(tParam, 10) : 0;
+  const urlPosition = !isNaN(parsedT) && parsedT > 0 ? parsedT : 0;
+  const [initialPosition, setInitialPosition] = useState(urlPosition);
+  const [serverWatchedSeconds, setServerWatchedSeconds] = useState(0);
 
   const [video, setVideo] = useState<LibraryVideo | null>(null);
   const [related, setRelated] = useState<LibraryVideo[]>([]);
@@ -61,6 +86,42 @@ export default function VideoDetailPage({
 
   // Copy share state
   const [copied, setCopied] = useState(false);
+
+  // Load server-saved progress (position + watched seconds)
+  useEffect(() => {
+    if (!isAuthenticated || urlPosition > 0) return;
+    // Fetch saved progress from server
+    fetch(`/api/dashboard/video-progress?videoId=${videoId}`)
+      .then((r) => r.json())
+      .then((d) => {
+        if (d.success && d.progress) {
+          setInitialPosition(d.progress.last_position_seconds ?? 0);
+          setServerWatchedSeconds(d.progress.watched_seconds ?? 0);
+        }
+      })
+      .catch(() => {});
+  }, [isAuthenticated, videoId, urlPosition]);
+
+  // Video tracker — only active when authenticated and video is loaded
+  const { setServerWatched } = useVideoTracker(videoRef, {
+    videoId,
+    videoDurationSeconds: video?.duration_seconds ?? 0,
+    initialPositionSeconds: initialPosition,
+  });
+
+  // Sync server watched seconds into tracker when loaded
+  useEffect(() => {
+    if (serverWatchedSeconds > 0) {
+      setServerWatched(serverWatchedSeconds);
+    }
+  }, [serverWatchedSeconds, setServerWatched]);
+
+  // Study session tracker
+  useStudySession({
+    videoId: video?.id,
+    activityType: "video_watch",
+    enabled: isAuthenticated && !!video,
+  });
 
   // Fetch video data
   useEffect(() => {
@@ -132,6 +193,38 @@ export default function VideoDetailPage({
     },
     [video]
   );
+
+  const handleGenerateQuiz = useCallback(async () => {
+    if (!video || quizLoading) return;
+    setQuizLoading(true);
+    setQuizError(null);
+    try {
+      const res = await fetch("/api/ai/mcqs", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          topic: video.topic,
+          plan: {
+            title: video.title,
+            summary: video.description,
+            scenes: [],
+            learningObjectives: [`Master key concepts of ${video.topic}`],
+            keyConcepts: video.tags || [video.subject],
+          },
+          numQuestions: 5,
+          difficulty: "mixed",
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to generate MCQs.");
+      setMcqSet(data.mcqSet as McqSetSafe);
+      setQuizKey((k) => k + 1);
+    } catch (err: unknown) {
+      setQuizError(err instanceof Error ? err.message : "Failed to generate quiz.");
+    } finally {
+      setQuizLoading(false);
+    }
+  }, [video, quizLoading]);
 
   const handleCopyLink = () => {
     if (typeof window !== "undefined") {
@@ -209,6 +302,7 @@ export default function VideoDetailPage({
             <div className="rounded-2xl overflow-hidden bg-black border border-border/80 shadow-2xl relative aspect-[16/9]">
               {!videoError ? (
                 <video
+                  ref={videoRef}
                   src={video.video_url}
                   poster={video.thumbnail_url || undefined}
                   controls
@@ -314,7 +408,9 @@ export default function VideoDetailPage({
                     type="button"
                     onClick={() => {
                       setActiveTab("quiz");
-                      setQuizTriggered(true);
+                      if (!mcqSet && !quizLoading) {
+                        handleGenerateQuiz();
+                      }
                     }}
                     className={`px-4 py-2 text-xs sm:text-sm font-semibold border-b-2 -mb-px transition-colors flex items-center gap-1.5 ${
                       activeTab === "quiz"
@@ -377,7 +473,9 @@ export default function VideoDetailPage({
                         variant="outline"
                         onClick={() => {
                           setActiveTab("quiz");
-                          setQuizTriggered(true);
+                          if (!mcqSet && !quizLoading) {
+                            handleGenerateQuiz();
+                          }
                         }}
                         className="border-border text-xs"
                       >
@@ -514,18 +612,49 @@ export default function VideoDetailPage({
                     </span>
                   </div>
 
-                  {quizTriggered && (
+                  {quizLoading && (
+                    <div className="flex flex-col items-center justify-center py-12 gap-3">
+                      <Loader2 className="w-8 h-8 text-primary animate-spin" />
+                      <p className="text-sm text-muted-foreground">Generating questions via OpenRouter…</p>
+                    </div>
+                  )}
+
+                  {quizError && !quizLoading && (
+                    <div className="p-4 rounded-xl border border-destructive/30 bg-destructive/10 text-destructive text-xs space-y-2">
+                      <p>{quizError}</p>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={handleGenerateQuiz}
+                        className="text-xs border-border"
+                      >
+                        Try Again
+                      </Button>
+                    </div>
+                  )}
+
+                  {!quizLoading && !quizError && !mcqSet && (
+                    <div className="flex flex-col items-center justify-center py-12 gap-3 text-center">
+                      <BrainCircuit className="w-10 h-10 text-primary/30" />
+                      <p className="text-sm text-muted-foreground max-w-sm">
+                        Ready to test your understanding of {video.topic}?
+                      </p>
+                      <Button
+                        size="sm"
+                        onClick={handleGenerateQuiz}
+                        className="bg-primary hover:bg-primary/90 text-primary-foreground text-xs"
+                      >
+                        Start Quiz
+                      </Button>
+                    </div>
+                  )}
+
+                  {mcqSet && !quizLoading && (
                     <InteractiveQuiz
-                      topic={video.topic || video.title}
-                      difficulty={
-                        video.educational_level === "undergraduate"
-                          ? "hard"
-                          : video.educational_level === "middle_school"
-                          ? "easy"
-                          : "medium"
-                      }
-                      count={5}
-                      onComplete={() => {}}
+                      key={quizKey}
+                      mcqSet={mcqSet}
+                      onRetake={() => setQuizKey((k) => k + 1)}
+                      videoId={video.id}
                     />
                   )}
                 </div>

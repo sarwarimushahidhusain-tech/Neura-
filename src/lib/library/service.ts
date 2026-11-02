@@ -1,9 +1,10 @@
 /**
  * NEURA PHASE 5 — VIDEO LIBRARY SERVICE
  * Database-backed search, retrieval, relevance scoring, and administration.
+ * Persistent metadata stored in Supabase `library_videos` table.
  */
 
-import { createClient as createServerSupabase } from "@/lib/supabase/server";
+import { createClient as createServerSupabase, createAdminClient } from "@/lib/supabase/server";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
 import type {
   LibraryVideo,
@@ -15,7 +16,8 @@ import type {
 import { validateVideoMetadata } from "./validation";
 
 // ---------------------------------------------------------------------------
-// Verified In-Memory Educational Repository (Used for offline dev & seed)
+// Verified Curated Educational Metadata Catalog
+// Seed records use authorized streaming endpoints: /api/library/stream?id=...
 // ---------------------------------------------------------------------------
 export const SEED_LIBRARY_VIDEOS: LibraryVideo[] = [
   {
@@ -27,7 +29,7 @@ export const SEED_LIBRARY_VIDEOS: LibraryVideo[] = [
     tags: ["physics", "classical mechanics", "newton", "inertia", "force", "gravity", "vectors", "motion"],
     thumbnail_url: "https://images.unsplash.com/photo-1636466497217-26a8cbeaf0aa?auto=format&fit=crop&w=800&q=80",
     storage_path: "educational-videos/demo/newtons-laws-3d.mp4",
-    video_url: "/demo/newton-motion.mp4",
+    video_url: "/api/library/stream?id=e1000000-0000-0000-0000-000000000001",
     duration_seconds: 180,
     educational_level: "high_school",
     published: true,
@@ -45,7 +47,7 @@ export const SEED_LIBRARY_VIDEOS: LibraryVideo[] = [
     tags: ["astronomy", "solar system", "planets", "gravity", "orbits", "kepler", "space", "sun"],
     thumbnail_url: "https://images.unsplash.com/photo-1614728894747-a83421e2b9c9?auto=format&fit=crop&w=800&q=80",
     storage_path: "educational-videos/demo/solar-system-3d.mp4",
-    video_url: "/demo/solar-system.mp4",
+    video_url: "/api/library/stream?id=e1000000-0000-0000-0000-000000000002",
     duration_seconds: 240,
     educational_level: "middle_school",
     published: true,
@@ -63,7 +65,7 @@ export const SEED_LIBRARY_VIDEOS: LibraryVideo[] = [
     tags: ["biology", "medicine", "cardiology", "heart", "circulation", "anatomy", "blood", "valves"],
     thumbnail_url: "https://images.unsplash.com/photo-1576091160399-112ba8d25d1d?auto=format&fit=crop&w=800&q=80",
     storage_path: "educational-videos/demo/human-heart-flow-3d.mp4",
-    video_url: "/demo/heart-flow.mp4",
+    video_url: "/api/library/stream?id=e1000000-0000-0000-0000-000000000003",
     duration_seconds: 210,
     educational_level: "high_school",
     published: true,
@@ -81,7 +83,7 @@ export const SEED_LIBRARY_VIDEOS: LibraryVideo[] = [
     tags: ["biology", "photosynthesis", "chloroplast", "calvin cycle", "cell biology", "plant science"],
     thumbnail_url: "https://images.unsplash.com/photo-1530836369250-ef72a3f5cda8?auto=format&fit=crop&w=800&q=80",
     storage_path: "educational-videos/demo/photosynthesis-3d.mp4",
-    video_url: "/demo/photosynthesis.mp4",
+    video_url: "/api/library/stream?id=e1000000-0000-0000-0000-000000000004",
     duration_seconds: 195,
     educational_level: "undergraduate",
     published: true,
@@ -99,7 +101,7 @@ export const SEED_LIBRARY_VIDEOS: LibraryVideo[] = [
     tags: ["chemistry", "quantum mechanics", "atom", "electrons", "protons", "orbitals", "nucleus"],
     thumbnail_url: "https://images.unsplash.com/photo-1507668077129-56e32842fceb?auto=format&fit=crop&w=800&q=80",
     storage_path: "educational-videos/demo/atom-structure-3d.mp4",
-    video_url: "/demo/atom-structure.mp4",
+    video_url: "/api/library/stream?id=e1000000-0000-0000-0000-000000000005",
     duration_seconds: 165,
     educational_level: "high_school",
     published: true,
@@ -117,7 +119,7 @@ export const SEED_LIBRARY_VIDEOS: LibraryVideo[] = [
     tags: ["physics", "circuits", "electronics", "electricity", "ohms law", "voltage", "current", "resistors"],
     thumbnail_url: "https://images.unsplash.com/photo-1518770660439-4636190af475?auto=format&fit=crop&w=800&q=80",
     storage_path: "educational-videos/demo/electric-circuits-3d.mp4",
-    video_url: "/demo/electric-circuits.mp4",
+    video_url: "/api/library/stream?id=e1000000-0000-0000-0000-000000000006",
     duration_seconds: 175,
     educational_level: "middle_school",
     published: true,
@@ -126,7 +128,7 @@ export const SEED_LIBRARY_VIDEOS: LibraryVideo[] = [
     created_at: "2026-03-25T11:20:00Z",
     updated_at: "2026-03-25T11:20:00Z",
   },
-  // Sample unpublished draft video (for verifying admin draft shielding)
+  // Sample unpublished draft video (for testing admin shielding)
   {
     id: "e1000000-0000-0000-0000-000000000099",
     title: "Quantum Entanglement & Bell State Teleportation (Draft)",
@@ -136,7 +138,7 @@ export const SEED_LIBRARY_VIDEOS: LibraryVideo[] = [
     tags: ["physics", "quantum", "entanglement", "qubits", "optics"],
     thumbnail_url: "https://images.unsplash.com/photo-1635070041078-e363dbe005cb?auto=format&fit=crop&w=800&q=80",
     storage_path: "educational-videos/demo/draft-quantum-entanglement.mp4",
-    video_url: "/demo/quantum-draft.mp4",
+    video_url: "/api/library/stream?id=e1000000-0000-0000-0000-000000000099",
     duration_seconds: 300,
     educational_level: "undergraduate",
     published: false,
@@ -146,9 +148,6 @@ export const SEED_LIBRARY_VIDEOS: LibraryVideo[] = [
     updated_at: "2026-04-01T08:00:00Z",
   },
 ];
-
-// In-memory store for dev changes
-let inMemoryVideos = [...SEED_LIBRARY_VIDEOS];
 
 /**
  * Calculates relevance score for ranking.
@@ -213,7 +212,7 @@ export function normalizeSearchQuery(query?: string): string[] {
 
 /**
  * Searches the educational video library.
- * Database-backed with local fallback.
+ * Database-backed via Supabase when configured, with catalog fallback.
  */
 export async function searchVideos(
   params: LibrarySearchParams = {},
@@ -232,29 +231,30 @@ export async function searchVideos(
   const canViewUnpublished = isAdmin && includeUnpublished;
   const queryTerms = normalizeSearchQuery(query);
 
-  // Use Supabase if configured
+  // 1. Query Supabase Database if configured
   if (isSupabaseConfigured()) {
     try {
-      const supabase = await createServerSupabase();
+      const adminClient = createAdminClient();
+      const supabase = adminClient || (await createServerSupabase());
       if (supabase) {
         let queryBuilder = supabase.from("library_videos").select("*", { count: "exact" });
 
-        // Filter: Published only unless admin requested unpublished
+        // Visibility filter
         if (!canViewUnpublished) {
           queryBuilder = queryBuilder.eq("published", true);
         }
 
-        // Filter: Subject
+        // Subject filter
         if (subject && subject !== "All") {
           queryBuilder = queryBuilder.eq("subject", subject);
         }
 
-        // Filter: Educational Level
+        // Educational level filter
         if (level && level !== "all_levels") {
           queryBuilder = queryBuilder.eq("educational_level", level);
         }
 
-        // Text Search using full-text search index if query provided
+        // Text search
         if (queryTerms.length > 0) {
           const formattedQuery = queryTerms.join(" & ");
           queryBuilder = queryBuilder.textSearch("search_vector", formattedQuery, {
@@ -269,7 +269,6 @@ export async function searchVideos(
         } else if (sort === "duration") {
           queryBuilder = queryBuilder.order("duration_seconds", { ascending: false });
         } else {
-          // Default: newest or relevance
           queryBuilder = queryBuilder.order("views_count", { ascending: false });
         }
 
@@ -294,33 +293,25 @@ export async function searchVideos(
         }
       }
     } catch {
-      // Fall through to in-memory on database error
+      // Fall through to catalog search
     }
   }
 
-  // In-Memory Search Fallback
-  const results = inMemoryVideos.filter((video) => {
-    // Visibility
+  // 2. Curated Catalog Search Fallback
+  const results = SEED_LIBRARY_VIDEOS.filter((video) => {
     if (!video.published && !canViewUnpublished) {
       return false;
     }
-
-    // Subject
     if (subject && subject !== "All" && video.subject !== subject) {
       return false;
     }
-
-    // Educational level
     if (level && level !== "all_levels" && video.educational_level !== level) {
       return false;
     }
-
-    // Query terms
     if (queryTerms.length > 0) {
       const score = calculateRelevanceScore(video, queryTerms);
       return score > 0;
     }
-
     return true;
   });
 
@@ -336,7 +327,6 @@ export async function searchVideos(
   } else if (sort === "duration") {
     results.sort((a, b) => b.duration_seconds - a.duration_seconds);
   } else {
-    // Default: Popularity / views
     results.sort((a, b) => b.views_count - a.views_count);
   }
 
@@ -362,7 +352,8 @@ export async function searchVideos(
 export async function getVideoById(id: string, isAdmin = false): Promise<LibraryVideo | null> {
   if (isSupabaseConfigured()) {
     try {
-      const supabase = await createServerSupabase();
+      const adminClient = createAdminClient();
+      const supabase = adminClient || (await createServerSupabase());
       if (supabase) {
         let q = supabase.from("library_videos").select("*").eq("id", id);
         if (!isAdmin) {
@@ -374,11 +365,11 @@ export async function getVideoById(id: string, isAdmin = false): Promise<Library
         }
       }
     } catch {
-      // Fallback
+      // Fall through
     }
   }
 
-  const found = inMemoryVideos.find((v) => v.id === id);
+  const found = SEED_LIBRARY_VIDEOS.find((v) => v.id === id);
   if (!found) return null;
   if (!found.published && !isAdmin) return null;
 
@@ -403,7 +394,8 @@ export async function getRelatedVideos(
 }
 
 /**
- * Admin action: Creates a new video record in the library.
+ * Admin action: Creates a new video record in the persistent database.
+ * Fails closed if Supabase is unconfigured — never silently drops into in-memory only.
  */
 export async function createLibraryVideo(
   input: LibraryVideoInput,
@@ -415,8 +407,23 @@ export async function createLibraryVideo(
     throw new Error(`Video metadata validation failed: ${msg}`);
   }
 
-  const newVideo: LibraryVideo = {
-    id: `v-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+  if (!isSupabaseConfigured()) {
+    throw new Error(
+      "Supabase database connection is unconfigured. Please configure NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY (and SUPABASE_SERVICE_ROLE_KEY) in .env.local to persist library videos."
+    );
+  }
+
+  const adminClient = createAdminClient();
+  const supabase = adminClient || (await createServerSupabase());
+  if (!supabase) {
+    throw new Error("Database client initialization failed.");
+  }
+
+  const videoId = crypto.randomUUID();
+  const authorizedPlaybackUrl = `/api/library/stream?id=${videoId}`;
+
+  const insertPayload = {
+    id: videoId,
     title: input.title.trim(),
     description: input.description.trim(),
     subject: input.subject,
@@ -424,138 +431,147 @@ export async function createLibraryVideo(
     tags: Array.isArray(input.tags) ? input.tags.map((t) => t.trim().toLowerCase()) : [],
     thumbnail_url: input.thumbnail_url || null,
     storage_path: input.storage_path.trim(),
-    video_url: input.video_url || `/api/library/stream?path=${encodeURIComponent(input.storage_path)}`,
+    video_url: authorizedPlaybackUrl,
     duration_seconds: Number(input.duration_seconds) || 0,
     educational_level: input.educational_level || "all_levels",
     published: Boolean(input.published),
-    views_count: 0,
     created_by: userId || null,
-    created_at: new Date().toISOString(),
-    updated_at: new Date().toISOString(),
   };
 
-  if (isSupabaseConfigured()) {
-    try {
-      const supabase = await createServerSupabase();
-      if (supabase) {
-        const { data, error } = await supabase
-          .from("library_videos")
-          .insert({
-            title: newVideo.title,
-            description: newVideo.description,
-            subject: newVideo.subject,
-            topic: newVideo.topic,
-            tags: newVideo.tags,
-            thumbnail_url: newVideo.thumbnail_url,
-            storage_path: newVideo.storage_path,
-            video_url: newVideo.video_url,
-            duration_seconds: newVideo.duration_seconds,
-            educational_level: newVideo.educational_level,
-            published: newVideo.published,
-            created_by: newVideo.created_by,
-          })
-          .select()
-          .single();
+  const { data, error } = await supabase
+    .from("library_videos")
+    .insert(insertPayload)
+    .select()
+    .single();
 
-        if (!error && data) {
-          return data as LibraryVideo;
-        }
-      }
-    } catch {
-      // In-memory fallback
-    }
+  if (error || !data) {
+    throw new Error(`Database error inserting video record: ${error?.message || "Unknown database failure"}`);
   }
 
-  inMemoryVideos.unshift(newVideo);
-  return newVideo;
+  return data as LibraryVideo;
 }
 
 /**
- * Admin action: Updates an existing video in the library.
+ * Admin action: Registers an already-uploaded Storage object as a library record.
+ * Checks for an existing record by storage_path first — returns it without inserting
+ * a duplicate if one already exists.  Fails closed if Supabase is unconfigured.
+ *
+ * The generated video_url always uses the private streaming route so the
+ * bucket stays private and no public file URL is ever created.
+ */
+export async function registerStorageVideo(
+  input: LibraryVideoInput,
+  userId?: string | null
+): Promise<{ video: LibraryVideo; alreadyExisted: boolean }> {
+  if (!isSupabaseConfigured()) {
+    throw new Error(
+      "Supabase database connection is unconfigured. Please configure credentials in .env.local."
+    );
+  }
+
+  const adminClient = createAdminClient();
+  const supabase = adminClient || (await createServerSupabase());
+  if (!supabase) {
+    throw new Error("Database client initialization failed.");
+  }
+
+  const normalizedPath = input.storage_path.trim();
+
+  // Check for duplicate by storage_path before inserting
+  const { data: existing, error: lookupError } = await supabase
+    .from("library_videos")
+    .select("*")
+    .eq("storage_path", normalizedPath)
+    .maybeSingle();
+
+  if (lookupError) {
+    throw new Error(`Duplicate check failed: ${lookupError.message}`);
+  }
+
+  if (existing) {
+    return { video: existing as LibraryVideo, alreadyExisted: true };
+  }
+
+  // Not a duplicate — create the record via the shared helper
+  const video = await createLibraryVideo({ ...input, storage_path: normalizedPath }, userId);
+  return { video, alreadyExisted: false };
+}
+
+/**
+ * Admin action: Updates an existing video in the persistent database.
+ * Fails closed if Supabase is unconfigured.
  */
 export async function updateLibraryVideo(
   id: string,
   input: Partial<LibraryVideoInput>
 ): Promise<LibraryVideo | null> {
-  if (isSupabaseConfigured()) {
-    try {
-      const supabase = await createServerSupabase();
-      if (supabase) {
-        const updatePayload: Record<string, unknown> = {
-          updated_at: new Date().toISOString(),
-        };
-
-        if (input.title !== undefined) updatePayload.title = input.title.trim();
-        if (input.description !== undefined) updatePayload.description = input.description.trim();
-        if (input.subject !== undefined) updatePayload.subject = input.subject;
-        if (input.topic !== undefined) updatePayload.topic = input.topic.trim();
-        if (input.tags !== undefined) updatePayload.tags = input.tags;
-        if (input.thumbnail_url !== undefined) updatePayload.thumbnail_url = input.thumbnail_url;
-        if (input.storage_path !== undefined) updatePayload.storage_path = input.storage_path;
-        if (input.video_url !== undefined) updatePayload.video_url = input.video_url;
-        if (input.duration_seconds !== undefined) updatePayload.duration_seconds = Number(input.duration_seconds);
-        if (input.educational_level !== undefined) updatePayload.educational_level = input.educational_level;
-        if (input.published !== undefined) updatePayload.published = Boolean(input.published);
-
-        const { data, error } = await supabase
-          .from("library_videos")
-          .update(updatePayload)
-          .eq("id", id)
-          .select()
-          .single();
-
-        if (!error && data) {
-          return data as LibraryVideo;
-        }
-      }
-    } catch {
-      // Fallback
-    }
+  if (!isSupabaseConfigured()) {
+    throw new Error(
+      "Supabase database connection is unconfigured. Please configure database credentials to update library videos."
+    );
   }
 
-  const idx = inMemoryVideos.findIndex((v) => v.id === id);
-  if (idx === -1) return null;
+  const adminClient = createAdminClient();
+  const supabase = adminClient || (await createServerSupabase());
+  if (!supabase) {
+    throw new Error("Database client initialization failed.");
+  }
 
-  const current = inMemoryVideos[idx];
-  const updated: LibraryVideo = {
-    ...current,
-    ...(input.title !== undefined && { title: input.title.trim() }),
-    ...(input.description !== undefined && { description: input.description.trim() }),
-    ...(input.subject !== undefined && { subject: input.subject }),
-    ...(input.topic !== undefined && { topic: input.topic.trim() }),
-    ...(input.tags !== undefined && { tags: input.tags }),
-    ...(input.thumbnail_url !== undefined && { thumbnail_url: input.thumbnail_url }),
-    ...(input.storage_path !== undefined && { storage_path: input.storage_path }),
-    ...(input.video_url !== undefined && { video_url: input.video_url }),
-    ...(input.duration_seconds !== undefined && { duration_seconds: Number(input.duration_seconds) }),
-    ...(input.educational_level !== undefined && { educational_level: input.educational_level }),
-    ...(input.published !== undefined && { published: Boolean(input.published) }),
+  const updatePayload: Record<string, unknown> = {
     updated_at: new Date().toISOString(),
   };
 
-  inMemoryVideos[idx] = updated;
-  return updated;
+  if (input.title !== undefined) updatePayload.title = input.title.trim();
+  if (input.description !== undefined) updatePayload.description = input.description.trim();
+  if (input.subject !== undefined) updatePayload.subject = input.subject;
+  if (input.topic !== undefined) updatePayload.topic = input.topic.trim();
+  if (input.tags !== undefined) updatePayload.tags = input.tags;
+  if (input.thumbnail_url !== undefined) updatePayload.thumbnail_url = input.thumbnail_url;
+  if (input.storage_path !== undefined) {
+    updatePayload.storage_path = input.storage_path.trim();
+    updatePayload.video_url = `/api/library/stream?id=${id}`;
+  }
+  if (input.duration_seconds !== undefined) updatePayload.duration_seconds = Number(input.duration_seconds);
+  if (input.educational_level !== undefined) updatePayload.educational_level = input.educational_level;
+  if (input.published !== undefined) updatePayload.published = Boolean(input.published);
+
+  const { data, error } = await supabase
+    .from("library_videos")
+    .update(updatePayload)
+    .eq("id", id)
+    .select()
+    .single();
+
+  if (error) {
+    throw new Error(`Database error updating video: ${error.message}`);
+  }
+
+  return (data as LibraryVideo) || null;
 }
 
 /**
- * Admin action: Deletes a video from the library.
+ * Admin action: Deletes a video from the persistent database.
+ * Fails closed if Supabase is unconfigured.
  */
 export async function deleteLibraryVideo(id: string): Promise<boolean> {
-  if (isSupabaseConfigured()) {
-    try {
-      const supabase = await createServerSupabase();
-      if (supabase) {
-        const { error } = await supabase.from("library_videos").delete().eq("id", id);
-        return !error;
-      }
-    } catch {
-      // Fallback
-    }
+  if (!isSupabaseConfigured()) {
+    throw new Error(
+      "Supabase database connection is unconfigured. Please configure database credentials to delete library videos."
+    );
   }
 
-  const initialLength = inMemoryVideos.length;
-  inMemoryVideos = inMemoryVideos.filter((v) => v.id !== id);
-  return inMemoryVideos.length < initialLength;
+  const adminClient = createAdminClient();
+  const supabase = adminClient || (await createServerSupabase());
+  if (!supabase) {
+    throw new Error("Database client initialization failed.");
+  }
+
+  const { error } = await supabase.from("library_videos").delete().eq("id", id);
+  if (error) {
+    throw new Error(`Database error deleting video: ${error.message}`);
+  }
+
+  return true;
 }
 
 /**
@@ -564,17 +580,18 @@ export async function deleteLibraryVideo(id: string): Promise<boolean> {
 export async function incrementVideoViews(id: string): Promise<void> {
   if (isSupabaseConfigured()) {
     try {
-      const supabase = await createServerSupabase();
+      const adminClient = createAdminClient();
+      const supabase = adminClient || (await createServerSupabase());
       if (supabase) {
         await supabase.rpc("increment_video_views", { video_id: id });
         return;
       }
     } catch {
-      // Ignore RPC error
+      // Ignore RPC error if function not created yet
     }
   }
 
-  const item = inMemoryVideos.find((v) => v.id === id);
+  const item = SEED_LIBRARY_VIDEOS.find((v) => v.id === id);
   if (item) {
     item.views_count += 1;
   }

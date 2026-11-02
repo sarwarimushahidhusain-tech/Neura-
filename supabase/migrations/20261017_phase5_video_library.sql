@@ -61,19 +61,40 @@ CREATE TABLE IF NOT EXISTS public.library_videos (
   created_by UUID REFERENCES auth.users(id) ON DELETE SET NULL,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-  -- Full-text search vector generated automatically from metadata
-  search_vector tsvector GENERATED ALWAYS AS (
-    to_tsvector('english',
-      coalesce(title, '') || ' ' ||
-      coalesce(topic, '') || ' ' ||
-      coalesce(subject, '') || ' ' ||
-      coalesce(description, '') || ' ' ||
-      array_to_string(tags, ' ')
-    )
-  ) STORED
+  -- Full-text search vector for metadata matching
+  search_vector tsvector
 );
 
--- 4. Indices for high-performance search & filtering
+-- Ensure search_vector column exists if table already existed
+ALTER TABLE public.library_videos ADD COLUMN IF NOT EXISTS search_vector tsvector;
+
+-- 4. Automatically maintain search_vector on INSERT and UPDATE
+CREATE OR REPLACE FUNCTION public.library_videos_search_vector_trigger()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_catalog
+AS $$
+BEGIN
+  NEW.search_vector := to_tsvector('pg_catalog.english',
+    coalesce(NEW.title, '') || ' ' ||
+    coalesce(NEW.topic, '') || ' ' ||
+    coalesce(NEW.subject, '') || ' ' ||
+    coalesce(NEW.description, '') || ' ' ||
+    coalesce(array_to_string(NEW.tags, ' '), '')
+  );
+  RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS trg_library_videos_search_vector ON public.library_videos;
+CREATE TRIGGER trg_library_videos_search_vector
+  BEFORE INSERT OR UPDATE OF title, topic, subject, description, tags
+  ON public.library_videos
+  FOR EACH ROW
+  EXECUTE FUNCTION public.library_videos_search_vector_trigger();
+
+-- 5. Indices for high-performance search & filtering
 CREATE INDEX IF NOT EXISTS idx_library_videos_search
   ON public.library_videos USING gin(search_vector);
 
@@ -128,20 +149,28 @@ CREATE POLICY "Only admins can delete library videos"
     public.is_current_user_admin()
   );
 
--- 6. Storage Buckets (educational-videos and video-thumbnails)
+-- 6. Storage Buckets (educational-videos [PRIVATE] and video-thumbnails [PUBLIC])
 INSERT INTO storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
 VALUES
-  ('educational-videos', 'educational-videos', true, 209715200, ARRAY['video/mp4', 'video/webm']),
+  ('educational-videos', 'educational-videos', false, 209715200, ARRAY['video/mp4', 'video/webm']),
   ('video-thumbnails', 'video-thumbnails', true, 10485760, ARRAY['image/jpeg', 'image/png', 'image/webp'])
 ON CONFLICT (id) DO UPDATE SET
   public = EXCLUDED.public,
   file_size_limit = EXCLUDED.file_size_limit,
   allowed_mime_types = EXCLUDED.allowed_mime_types;
 
--- Storage RLS: Anyone can read from public educational buckets
-CREATE POLICY "Public read access for educational videos"
+-- Storage RLS: Public read access ONLY for public image thumbnails
+CREATE POLICY "Public read access for video thumbnails"
   ON storage.objects FOR SELECT
-  USING (bucket_id IN ('educational-videos', 'video-thumbnails'));
+  USING (bucket_id = 'video-thumbnails');
+
+-- Storage RLS: Direct storage read of private educational videos restricted to administrators
+CREATE POLICY "Admins read educational videos"
+  ON storage.objects FOR SELECT
+  USING (
+    bucket_id = 'educational-videos'
+    AND public.is_current_user_admin()
+  );
 
 -- Storage RLS: Only admins can upload video assets
 CREATE POLICY "Admins can upload educational video assets"
@@ -161,6 +190,7 @@ CREATE POLICY "Admins can delete educational video assets"
 
 -- 7. Seed Sample Metadata (Development / Demo Records)
 -- Clearly identifiable sample 3D curriculum records for testing search and playback
+-- video_url resolves to the secure streaming endpoint /api/library/stream?id=...
 INSERT INTO public.library_videos (
   id,
   title,
@@ -185,7 +215,7 @@ INSERT INTO public.library_videos (
   ARRAY['physics', 'classical mechanics', 'newton', 'inertia', 'force', 'gravity', 'vectors', 'motion'],
   'https://images.unsplash.com/photo-1636466497217-26a8cbeaf0aa?auto=format&fit=crop&w=800&q=80',
   'educational-videos/demo/newtons-laws-3d.mp4',
-  '/demo/newton-motion.mp4',
+  '/api/library/stream?id=e1000000-0000-0000-0000-000000000001',
   180,
   'high_school',
   true,
@@ -200,7 +230,7 @@ INSERT INTO public.library_videos (
   ARRAY['astronomy', 'solar system', 'planets', 'gravity', 'orbits', 'kepler', 'space', 'sun'],
   'https://images.unsplash.com/photo-1614728894747-a83421e2b9c9?auto=format&fit=crop&w=800&q=80',
   'educational-videos/demo/solar-system-3d.mp4',
-  '/demo/solar-system.mp4',
+  '/api/library/stream?id=e1000000-0000-0000-0000-000000000002',
   240,
   'middle_school',
   true,
@@ -215,7 +245,7 @@ INSERT INTO public.library_videos (
   ARRAY['biology', 'medicine', 'cardiology', 'heart', 'circulation', 'anatomy', 'blood', 'valves'],
   'https://images.unsplash.com/photo-1576091160399-112ba8d25d1d?auto=format&fit=crop&w=800&q=80',
   'educational-videos/demo/human-heart-flow-3d.mp4',
-  '/demo/heart-flow.mp4',
+  '/api/library/stream?id=e1000000-0000-0000-0000-000000000003',
   210,
   'high_school',
   true,
@@ -230,7 +260,7 @@ INSERT INTO public.library_videos (
   ARRAY['biology', 'photosynthesis', 'chloroplast', 'calvin cycle', 'cell biology', 'plant science'],
   'https://images.unsplash.com/photo-1530836369250-ef72a3f5cda8?auto=format&fit=crop&w=800&q=80',
   'educational-videos/demo/photosynthesis-3d.mp4',
-  '/demo/photosynthesis.mp4',
+  '/api/library/stream?id=e1000000-0000-0000-0000-000000000004',
   195,
   'undergraduate',
   true,
@@ -245,7 +275,7 @@ INSERT INTO public.library_videos (
   ARRAY['chemistry', 'quantum mechanics', 'atom', 'electrons', 'protons', 'orbitals', 'nucleus'],
   'https://images.unsplash.com/photo-1507668077129-56e32842fceb?auto=format&fit=crop&w=800&q=80',
   'educational-videos/demo/atom-structure-3d.mp4',
-  '/demo/atom-structure.mp4',
+  '/api/library/stream?id=e1000000-0000-0000-0000-000000000005',
   165,
   'high_school',
   true,
@@ -260,10 +290,21 @@ INSERT INTO public.library_videos (
   ARRAY['physics', 'circuits', 'electronics', 'electricity', 'ohms law', 'voltage', 'current', 'resistors'],
   'https://images.unsplash.com/photo-1518770660439-4636190af475?auto=format&fit=crop&w=800&q=80',
   'educational-videos/demo/electric-circuits-3d.mp4',
-  '/demo/electric-circuits.mp4',
+  '/api/library/stream?id=e1000000-0000-0000-0000-000000000006',
   175,
   'middle_school',
   true,
   1675
 )
 ON CONFLICT (id) DO NOTHING;
+
+-- 8. Backfill search_vector for any existing records
+UPDATE public.library_videos
+SET search_vector = to_tsvector('pg_catalog.english',
+  coalesce(title, '') || ' ' ||
+  coalesce(topic, '') || ' ' ||
+  coalesce(subject, '') || ' ' ||
+  coalesce(description, '') || ' ' ||
+  coalesce(array_to_string(tags, ' '), '')
+)
+WHERE search_vector IS NULL;

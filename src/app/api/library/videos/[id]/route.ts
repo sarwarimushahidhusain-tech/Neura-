@@ -104,9 +104,10 @@ export async function PATCH(
     });
   } catch (error) {
     const msg = error instanceof Error ? error.message : "Failed to update video";
+    const status = msg.includes("unconfigured") ? 503 : 500;
     return NextResponse.json(
-      { success: false, error: msg, code: "UPDATE_FAILED" },
-      { status: 500 }
+      { success: false, error: msg, code: status === 503 ? "DB_UNCONFIGURED" : "UPDATE_FAILED" },
+      { status }
     );
   }
 }
@@ -144,9 +145,10 @@ export async function DELETE(
     });
   } catch (error) {
     const msg = error instanceof Error ? error.message : "Failed to delete video";
+    const status = msg.includes("unconfigured") ? 503 : 500;
     return NextResponse.json(
-      { success: false, error: msg, code: "DELETE_FAILED" },
-      { status: 500 }
+      { success: false, error: msg, code: status === 503 ? "DB_UNCONFIGURED" : "DELETE_FAILED" },
+      { status }
     );
   }
 }

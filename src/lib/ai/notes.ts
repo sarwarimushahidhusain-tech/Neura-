@@ -116,23 +116,23 @@ function validateNotesResponse(raw: unknown): Omit<StudyNotes, "detailLevel" | "
 
   const definitions: DefinitionEntry[] = Array.isArray(obj.definitions)
     ? obj.definitions
-        .filter((d): d is Record<string, unknown> => Boolean(d && typeof d === "object"))
-        .map((d) => ({
-          term: typeof d.term === "string" ? d.term.trim() : "Term",
-          definition: typeof d.definition === "string" ? d.definition.trim() : "Definition",
-        }))
+      .filter((d): d is Record<string, unknown> => Boolean(d && typeof d === "object"))
+      .map((d) => ({
+        term: typeof d.term === "string" ? d.term.trim() : "Term",
+        definition: typeof d.definition === "string" ? d.definition.trim() : "Definition",
+      }))
     : [];
 
   const mainConcepts: ConceptSection[] = Array.isArray(obj.mainConcepts)
     ? obj.mainConcepts
-        .filter((c): c is Record<string, unknown> => Boolean(c && typeof c === "object"))
-        .map((c) => ({
-          concept: typeof c.concept === "string" ? c.concept.trim() : "Concept",
-          explanation: typeof c.explanation === "string" ? c.explanation.trim() : "",
-          examples: Array.isArray(c.examples)
-            ? c.examples.filter((e): e is string => typeof e === "string").map((e) => e.trim())
-            : [],
-        }))
+      .filter((c): c is Record<string, unknown> => Boolean(c && typeof c === "object"))
+      .map((c) => ({
+        concept: typeof c.concept === "string" ? c.concept.trim() : "Concept",
+        explanation: typeof c.explanation === "string" ? c.explanation.trim() : "",
+        examples: Array.isArray(c.examples)
+          ? c.examples.filter((e): e is string => typeof e === "string").map((e) => e.trim())
+          : [],
+      }))
     : [];
 
   const stepByStepExplanations: string[] = Array.isArray(obj.stepByStepExplanations)
@@ -189,9 +189,7 @@ export async function generateStudyNotes(
     const parsed = extractJson(rawText);
     const validated = validateNotesResponse(parsed);
 
-    const sourceDisclaimer = input.transcript
-      ? "These notes are grounded in the lesson plan and provided transcript/scene text."
-      : "These notes are grounded in the lesson plan. No video or audio content was analyzed.";
+    const sourceDisclaimer = "";
 
     return {
       ...validated,

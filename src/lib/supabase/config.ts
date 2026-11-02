@@ -36,3 +36,15 @@ export function getSupabaseEnv() {
 export function isSupabaseConfigured(): boolean {
   return getSupabaseEnv().isConfigured;
 }
+
+export function isServiceRoleConfigured(): boolean {
+  const { isConfigured } = getSupabaseEnv();
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY?.trim();
+  if (!isConfigured || !key) return false;
+  return Boolean(
+    !key.includes("your-service-role") &&
+    !key.includes("<") &&
+    !key.includes(">") &&
+    key.length >= 30
+  );
+}

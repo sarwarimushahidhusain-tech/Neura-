@@ -228,7 +228,7 @@ function stripAnswerKey(questions: McqQuestion[]): McqSetSafe["questions"] {
 export async function generateMcqSet(
   input: McqGenerationInput,
   retryCount = 0
-): Promise<{ mcqSet: McqSetSafe; setId: string }> {
+): Promise<{ mcqSet: McqSetSafe; setId: string; fullQuestions: McqQuestion[] }> {
   const messages = [
     { role: "system" as const, content: buildMcqSystemPrompt(input.difficulty, input.numQuestions) },
     { role: "user" as const, content: buildMcqUserPrompt(input) },
@@ -258,7 +258,7 @@ export async function generateMcqSet(
       generatedAt: new Date().toISOString(),
     };
 
-    return { mcqSet: safeSet, setId };
+    return { mcqSet: safeSet, setId, fullQuestions: questions };
   } catch (err: unknown) {
     if (retryCount === 0) {
       return generateMcqSet(input, 1);
@@ -275,22 +275,13 @@ export async function generateMcqSet(
 }
 
 // ---------------------------------------------------------------------------
-// Public: score quiz submission
+// Public: pure grading function against trusted question list
 // ---------------------------------------------------------------------------
 
-export function scoreQuizSubmission(
-  setId: string,
+export function scoreQuestions(
+  questions: McqQuestion[],
   answers: QuizAnswer[]
 ): QuizResult {
-  const questions = answerKeyStore.get(setId);
-  if (!questions) {
-    throw new OpenRouterError(
-      "Quiz session not found or has expired. Please regenerate the quiz.",
-      404,
-      "OR_QUIZ_NOT_FOUND"
-    );
-  }
-
   const questionMap = new Map(questions.map((q) => [q.id, q]));
 
   const correct: boolean[] = [];
@@ -322,6 +313,26 @@ export function scoreQuizSubmission(
     explanations,
     correctIndexes,
   };
+}
+
+// ---------------------------------------------------------------------------
+// Public: score quiz submission (in-memory fallback for demo/offline sessions)
+// ---------------------------------------------------------------------------
+
+export function scoreQuizSubmission(
+  setId: string,
+  answers: QuizAnswer[]
+): QuizResult {
+  const questions = answerKeyStore.get(setId);
+  if (!questions) {
+    throw new OpenRouterError(
+      "Quiz session not found or has expired. Please regenerate the quiz.",
+      404,
+      "OR_QUIZ_NOT_FOUND"
+    );
+  }
+
+  return scoreQuestions(questions, answers);
 }
 
 // ---------------------------------------------------------------------------
@@ -364,7 +375,11 @@ export function validateMcqInput(body: unknown): McqGenerationInput {
 // Public: validate submission input
 // ---------------------------------------------------------------------------
 
-export function validateSubmitInput(body: unknown): { setId: string; answers: QuizAnswer[] } {
+export function validateSubmitInput(body: unknown): {
+  setId: string;
+  answers: QuizAnswer[];
+  videoId?: string | null;
+} {
   if (!body || typeof body !== "object") {
     throw new ValidationError("Request body must be a JSON object.");
   }
@@ -393,5 +408,10 @@ export function validateSubmitInput(body: unknown): { setId: string; answers: Qu
     return { questionId: ans.questionId, chosenIndex };
   });
 
-  return { setId: raw.setId.trim(), answers };
+  const videoId =
+    typeof raw.videoId === "string" && raw.videoId.trim()
+      ? raw.videoId.trim()
+      : null;
+
+  return { setId: raw.setId.trim(), answers, videoId };
 }
