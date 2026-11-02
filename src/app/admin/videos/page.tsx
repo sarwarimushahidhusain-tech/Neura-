@@ -15,13 +15,13 @@ import {
   X,
   AlertTriangle,
   RotateCw,
+  HardDriveUpload,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
-import { getStoredUser } from "@/lib/auth";
 import type {
   LibraryVideo,
   LibraryVideoInput,
@@ -51,7 +51,7 @@ const LEVELS: { value: EducationalLevel; label: string }[] = [
 ];
 
 export default function AdminVideosPage() {
-  const [activeTab, setActiveTab] = useState<"list" | "upload">("list");
+  const [activeTab, setActiveTab] = useState<"list" | "upload" | "register">("list");
   const [videos, setVideos] = useState<LibraryVideo[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -88,6 +88,24 @@ export default function AdminVideosPage() {
   const videoInputRef = useRef<HTMLInputElement>(null);
   const thumbInputRef = useRef<HTMLInputElement>(null);
 
+  // --- Register Existing Storage Video state ---
+  const [regStoragePath, setRegStoragePath] = useState("educational-videos/DNA.mp4");
+  const [regTitle, setRegTitle] = useState("DNA Structure and Function");
+  const [regDescription, setRegDescription] = useState(
+    "An in-depth exploration of the DNA double helix structure, nucleotide base pairing, and the role of genes in heredity and protein synthesis."
+  );
+  const [regSubject, setRegSubject] = useState<SubjectCategory>("Biology");
+  const [regTopic, setRegTopic] = useState("DNA Structure and Function");
+  const [regTagsInput, setRegTagsInput] = useState(
+    "DNA, biology, genetics, genes, double helix, nucleotides, heredity"
+  );
+  const [regLevel, setRegLevel] = useState<EducationalLevel>("high_school");
+  const [regDuration, setRegDuration] = useState(0);
+  const [regPublished, setRegPublished] = useState(true);
+  const [regSubmitting, setRegSubmitting] = useState(false);
+  const [regError, setRegError] = useState<string | null>(null);
+  const [regSuccess, setRegSuccess] = useState<string | null>(null);
+
   // Fetch all videos (including unpublished)
   const loadVideos = useCallback(async () => {
     try {
@@ -110,7 +128,6 @@ export default function AdminVideosPage() {
     let mounted = true;
 
     async function initAdmin() {
-      const user = getStoredUser();
       let userIsAdmin = false;
 
       try {
@@ -121,15 +138,18 @@ export default function AdminVideosPage() {
           if (mounted && data.success) {
             setVideos(data.videos || []);
           }
-        } else if (user && (user.role === "developer" || user.email.includes("admin"))) {
-          userIsAdmin = true;
-          const data = await res.json().catch(() => ({}));
-          if (mounted && data.videos) {
-            setVideos(data.videos);
-          }
+        } else if (res.status === 401) {
+          setError("Authentication required. Please sign in with an administrator account.");
+        } else if (res.status === 403) {
+          setError("Forbidden: Your account does not have administrator privileges.");
+        } else if (res.status === 503) {
+          setError("Administrator service is unconfigured. Supabase credentials and ADMIN_EMAILS must be configured.");
+        } else {
+          setError("Failed to verify administrator privileges.");
         }
       } catch {
         userIsAdmin = false;
+        setError("Network error while verifying administrator authorization.");
       } finally {
         if (mounted) {
           setIsAdmin(userIsAdmin);
@@ -388,6 +408,56 @@ export default function AdminVideosPage() {
     setActiveTab("upload");
   };
 
+  // Register an already-uploaded Storage object
+  const handleRegisterStorage = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setRegError(null);
+    setRegSuccess(null);
+    setRegSubmitting(true);
+
+    try {
+      const tags = regTagsInput
+        .split(",")
+        .map((t) => t.trim().toLowerCase())
+        .filter((t) => t.length > 0);
+
+      const res = await fetch("/api/library/register", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          storage_path: regStoragePath.trim(),
+          title: regTitle.trim(),
+          description: regDescription.trim(),
+          subject: regSubject,
+          topic: regTopic.trim(),
+          tags,
+          duration_seconds: regDuration,
+          educational_level: regLevel,
+          published: regPublished,
+        }),
+      });
+
+      const data = await res.json();
+
+      if (!data.success) {
+        setRegError(data.error || "Registration failed.");
+        return;
+      }
+
+      const prefix = data.alreadyExisted
+        ? "Record already existed — no duplicate created. "
+        : "Storage video registered successfully! ";
+      setRegSuccess(
+        `${prefix}Stream URL: ${data.streamUrl} | Video ID: ${data.video?.id}`
+      );
+      loadVideos();
+    } catch (err) {
+      setRegError(err instanceof Error ? err.message : "Registration failed.");
+    } finally {
+      setRegSubmitting(false);
+    }
+  };
+
   if (checkingAuth) {
     return (
       <div className="min-h-screen bg-background text-foreground pt-28 text-center space-y-4">
@@ -438,7 +508,7 @@ export default function AdminVideosPage() {
           </p>
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3 flex-wrap">
           <Button
             variant={activeTab === "list" ? "default" : "outline"}
             size="sm"
@@ -460,6 +530,17 @@ export default function AdminVideosPage() {
             className="text-xs gap-1.5 bg-primary text-primary-foreground"
           >
             <Plus className="w-4 h-4" /> Upload New Video
+          </Button>
+          <Button
+            variant={activeTab === "register" ? "default" : "outline"}
+            size="sm"
+            onClick={() => {
+              setActiveTab("register");
+              setEditingVideo(null);
+            }}
+            className="text-xs gap-1.5"
+          >
+            <HardDriveUpload className="w-4 h-4" /> Register Existing
           </Button>
         </div>
       </div>
@@ -827,6 +908,198 @@ export default function AdminVideosPage() {
                     : editingVideo
                     ? "Save Changes"
                     : "Upload & Save Video"}
+                </Button>
+              </div>
+            </form>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* TAB 3: REGISTER EXISTING STORAGE VIDEO */}
+      {activeTab === "register" && (
+        <Card className="bg-card border-border p-6 rounded-2xl max-w-3xl mx-auto shadow-lg">
+          <CardContent className="p-0 space-y-6">
+            <div className="border-b border-border/60 pb-3">
+              <div className="flex items-center gap-2 mb-1">
+                <HardDriveUpload className="w-5 h-5 text-primary" />
+                <h2 className="text-lg font-bold text-foreground">Register Existing Storage Video</h2>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Register an already-uploaded Storage object as a library record — without uploading the file again.
+                A duplicate check by storage path is performed before any insert.
+                The private streaming route (<code>/api/library/stream?id=…</code>) is used; no public URL is created.
+              </p>
+            </div>
+
+            {regError && (
+              <div className="p-4 rounded-xl bg-destructive/10 border border-destructive/30 text-destructive text-xs flex items-center gap-2">
+                <AlertTriangle className="w-4 h-4 shrink-0" />
+                <p>{regError}</p>
+              </div>
+            )}
+
+            {regSuccess && (
+              <div className="p-4 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 text-xs flex items-start gap-2">
+                <CheckCircle className="w-4 h-4 shrink-0 mt-0.5" />
+                <p className="break-all">{regSuccess}</p>
+              </div>
+            )}
+
+            <form onSubmit={handleRegisterStorage} className="space-y-5">
+              {/* Storage Path */}
+              <div className="space-y-1.5">
+                <label className="text-xs font-semibold text-foreground uppercase tracking-wider block">
+                  Storage Path (bucket/filename) *
+                </label>
+                <Input
+                  id="reg-storage-path"
+                  type="text"
+                  required
+                  value={regStoragePath}
+                  onChange={(e) => setRegStoragePath(e.target.value)}
+                  placeholder="educational-videos/DNA.mp4"
+                  className="bg-background border-border text-xs font-mono"
+                />
+                <p className="text-[10px] text-muted-foreground">
+                  Must match the exact path in the <strong>educational-videos</strong> Supabase Storage bucket.
+                  The server will verify the object exists before inserting a record.
+                </p>
+              </div>
+
+              {/* Title & Topic */}
+              <div className="grid sm:grid-cols-2 gap-4">
+                <div className="space-y-1.5">
+                  <label className="text-xs font-semibold text-foreground">Video Title *</label>
+                  <Input
+                    id="reg-title"
+                    type="text"
+                    required
+                    value={regTitle}
+                    onChange={(e) => setRegTitle(e.target.value)}
+                    placeholder="DNA Structure and Function"
+                    className="bg-background border-border text-xs"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-xs font-semibold text-foreground">Educational Topic *</label>
+                  <Input
+                    id="reg-topic"
+                    type="text"
+                    required
+                    value={regTopic}
+                    onChange={(e) => setRegTopic(e.target.value)}
+                    placeholder="DNA Structure and Function"
+                    className="bg-background border-border text-xs"
+                  />
+                </div>
+              </div>
+
+              {/* Subject & Level */}
+              <div className="grid sm:grid-cols-2 gap-4">
+                <div className="space-y-1.5">
+                  <label className="text-xs font-semibold text-foreground">Subject *</label>
+                  <select
+                    id="reg-subject"
+                    value={regSubject}
+                    onChange={(e) => setRegSubject(e.target.value as SubjectCategory)}
+                    className="w-full bg-background border border-border rounded-lg text-xs px-3 py-2 text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+                  >
+                    {SUBJECTS.map((s) => (
+                      <option key={s} value={s}>{s}</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-xs font-semibold text-foreground">Educational Level</label>
+                  <select
+                    id="reg-level"
+                    value={regLevel}
+                    onChange={(e) => setRegLevel(e.target.value as EducationalLevel)}
+                    className="w-full bg-background border border-border rounded-lg text-xs px-3 py-2 text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+                  >
+                    {LEVELS.map((l) => (
+                      <option key={l.value} value={l.value}>{l.label}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              {/* Description */}
+              <div className="space-y-1.5">
+                <label className="text-xs font-semibold text-foreground">Description *</label>
+                <Textarea
+                  id="reg-description"
+                  rows={3}
+                  required
+                  value={regDescription}
+                  onChange={(e) => setRegDescription(e.target.value)}
+                  placeholder="Describe the educational content..."
+                  className="bg-background border-border text-xs leading-relaxed"
+                />
+              </div>
+
+              {/* Tags & Duration */}
+              <div className="grid sm:grid-cols-2 gap-4">
+                <div className="space-y-1.5">
+                  <label className="text-xs font-semibold text-foreground">Search Tags (comma separated)</label>
+                  <Input
+                    id="reg-tags"
+                    type="text"
+                    value={regTagsInput}
+                    onChange={(e) => setRegTagsInput(e.target.value)}
+                    placeholder="DNA, biology, genetics"
+                    className="bg-background border-border text-xs"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-xs font-semibold text-foreground">Duration (Seconds)</label>
+                  <Input
+                    id="reg-duration"
+                    type="number"
+                    min={0}
+                    max={7200}
+                    value={regDuration}
+                    onChange={(e) => setRegDuration(parseInt(e.target.value, 10) || 0)}
+                    className="bg-background border-border text-xs"
+                  />
+                </div>
+              </div>
+
+              {/* Publish Toggle */}
+              <div className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  id="reg-published"
+                  checked={regPublished}
+                  onChange={(e) => setRegPublished(e.target.checked)}
+                  className="rounded border-border text-primary focus:ring-primary w-4 h-4"
+                />
+                <label htmlFor="reg-published" className="text-xs font-medium text-foreground cursor-pointer">
+                  Publish immediately (visible in student search library)
+                </label>
+              </div>
+
+              {/* Submit */}
+              <div className="flex items-center justify-between pt-4 border-t border-border/60">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setActiveTab("list")}
+                  className="text-xs border-border"
+                >
+                  Cancel
+                </Button>
+                <Button
+                  type="submit"
+                  disabled={regSubmitting}
+                  className="bg-primary hover:bg-primary/90 text-primary-foreground text-xs px-6 shadow-md gap-1.5"
+                >
+                  {regSubmitting ? (
+                    <><RotateCw className="w-3.5 h-3.5 animate-spin" /> Registering...</>
+                  ) : (
+                    <><HardDriveUpload className="w-3.5 h-3.5" /> Register Storage Video</>
+                  )}
                 </Button>
               </div>
             </form>

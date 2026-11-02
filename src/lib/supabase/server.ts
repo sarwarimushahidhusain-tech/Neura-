@@ -1,4 +1,5 @@
 import { createServerClient } from "@supabase/ssr";
+import { createClient as createSupabaseClient } from "@supabase/supabase-js";
 import { cookies } from "next/headers";
 import { getSupabaseEnv } from "./config";
 
@@ -31,6 +32,28 @@ export async function createClient() {
           // This is expected and safe when middleware handles session refresh.
         }
       },
+    },
+  });
+}
+
+/**
+ * Creates a server-only Supabase client using the service-role key.
+ * Used exclusively for trusted server-side administrative operations
+ * (e.g., generating short-lived signed URLs for private videos).
+ * NEVER expose this client or the service role key to the browser.
+ */
+export function createAdminClient() {
+  const { url, isConfigured } = getSupabaseEnv();
+  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY?.trim();
+
+  if (!isConfigured || !serviceRoleKey || serviceRoleKey.includes("your-service-role") || serviceRoleKey.length < 30) {
+    return null;
+  }
+
+  return createSupabaseClient(url, serviceRoleKey, {
+    auth: {
+      autoRefreshToken: false,
+      persistSession: false,
     },
   });
 }

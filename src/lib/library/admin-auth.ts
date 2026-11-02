@@ -4,7 +4,7 @@
  * can upload, publish, edit, or delete educational library videos.
  */
 
-import { getServerUser, createClient as createServerSupabase } from "@/lib/supabase/server";
+import { getServerUser, createClient as createServerSupabase, createAdminClient } from "@/lib/supabase/server";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
 
 export interface AdminAuthResult {
@@ -19,38 +19,33 @@ export interface AdminAuthResult {
 }
 
 /**
- * Returns list of configured admin email addresses.
+ * Returns list of configured admin email addresses from environment.
+ * Does NOT auto-fallback to hardcoded emails if unconfigured.
  */
 export function getConfiguredAdminEmails(): string[] {
   const envAdmins = process.env.ADMIN_EMAILS || "";
-  const parsed = envAdmins
+  return envAdmins
     .split(",")
     .map((e) => e.trim().toLowerCase())
     .filter((e) => e.length > 0);
-
-  // Default fallback admin for testing/development
-  if (parsed.length === 0 && process.env.NODE_ENV !== "production") {
-    return ["admin@neura.ai", "admin@neura.local"];
-  }
-
-  return parsed;
 }
 
 /**
- * Checks whether an email address is an authorized administrator.
+ * Checks whether an email address is in the configured administrator allowlist.
  */
 export function isEmailAdmin(email?: string | null): boolean {
   if (!email) return false;
   const adminEmails = getConfiguredAdminEmails();
+  if (adminEmails.length === 0) return false;
   return adminEmails.includes(email.toLowerCase().trim());
 }
 
 /**
  * Evaluates whether a given user holds administrator privileges.
- * Checks:
+ * Server-verified checks:
  * 1. ADMIN_EMAILS environment allowlist
- * 2. Supabase app_metadata.role === 'admin'
- * 3. Supabase public.user_roles table entry
+ * 2. Supabase app_metadata.role === 'admin' (tamper-proof, set only via service role/dashboard)
+ * 3. Supabase public.user_roles table entry (role = 'admin')
  */
 export async function verifyUserIsAdmin(user: {
   id: string;
@@ -62,12 +57,12 @@ export async function verifyUserIsAdmin(user: {
     return false;
   }
 
-  // Check 1: Explicit email allowlist
+  // Check 1: Explicit server-side email allowlist
   if (user.email && isEmailAdmin(user.email)) {
     return true;
   }
 
-  // Check 2: Supabase app_metadata (secure, cannot be written by users)
+  // Check 2: Supabase app_metadata (cannot be written by client users)
   if (user.app_metadata && user.app_metadata.role === "admin") {
     return true;
   }
@@ -75,7 +70,8 @@ export async function verifyUserIsAdmin(user: {
   // Check 3: Query public.user_roles in Supabase
   if (isSupabaseConfigured()) {
     try {
-      const supabase = await createServerSupabase();
+      const adminClient = createAdminClient();
+      const supabase = adminClient || (await createServerSupabase());
       if (supabase) {
         const { data, error } = await supabase
           .from("user_roles")
@@ -88,7 +84,7 @@ export async function verifyUserIsAdmin(user: {
         }
       }
     } catch {
-      // In case table or query fails, fall through safely
+      // In case query fails, fail closed
     }
   }
 
@@ -96,17 +92,34 @@ export async function verifyUserIsAdmin(user: {
 }
 
 /**
- * Server-side guard for Route Handlers. Inspects request session/cookies
- * and returns authorization status.
+ * Server-side guard for Route Handlers and Server Actions.
+ * Strict least-privilege verification:
+ * - Never auto-authorizes unauthenticated requests in development or production.
+ * - Rejects arbitrary client headers (e.g. x-admin-email, client role overrides).
+ * - Verifies real session via getServerUser() or explicit server ADMIN_API_KEY.
+ * - Fails closed with 503 if administrative configuration is missing.
  */
 export async function verifyAdminRequest(req?: Request): Promise<AdminAuthResult> {
-  // If Supabase is configured, check authenticated session
+  // Check 1: Server-to-server API Key (if explicitly configured in environment)
+  const configuredApiKey = process.env.ADMIN_API_KEY?.trim();
+  if (req && configuredApiKey && configuredApiKey.length >= 16) {
+    const authHeader = req.headers.get("authorization") || "";
+    if (authHeader === `Bearer ${configuredApiKey}`) {
+      return {
+        authorized: true,
+        user: { id: "server-admin-key", email: "admin@system.local", role: "admin" },
+        status: 200,
+      };
+    }
+  }
+
+  // Check 2: Authenticated Supabase session
   if (isSupabaseConfigured()) {
     const user = await getServerUser();
     if (!user) {
       return {
         authorized: false,
-        error: "Authentication required. Please log in to access admin capabilities.",
+        error: "Authentication required. Please sign in with an authorized administrator account.",
         status: 401,
       };
     }
@@ -115,7 +128,7 @@ export async function verifyAdminRequest(req?: Request): Promise<AdminAuthResult
     if (!isAdmin) {
       return {
         authorized: false,
-        error: "Forbidden. Only authorized administrators can perform this action.",
+        error: "Forbidden. Your account does not have administrator privileges.",
         status: 403,
       };
     }
@@ -131,47 +144,10 @@ export async function verifyAdminRequest(req?: Request): Promise<AdminAuthResult
     };
   }
 
-  // Development fallback when Supabase is not configured (offline / prototype mode)
-  // Check authorization header or dev cookie
-  if (req) {
-    const authHeader = req.headers.get("authorization") || "";
-    const adminKey = process.env.ADMIN_API_KEY;
-
-    if (adminKey && authHeader === `Bearer ${adminKey}`) {
-      return {
-        authorized: true,
-        user: { id: "dev-admin-id", email: "admin@neura.ai", role: "admin" },
-        status: 200,
-      };
-    }
-
-    // Check dev-admin-session header in mock development
-    const devAdminEmail = req.headers.get("x-admin-email");
-    if (devAdminEmail && isEmailAdmin(devAdminEmail)) {
-      return {
-        authorized: true,
-        user: { id: "dev-admin-header", email: devAdminEmail, role: "admin" },
-        status: 200,
-      };
-    }
-  }
-
-  // If in non-production and demo auth is allowed, allow dev admin for local testing
-  if (process.env.NODE_ENV !== "production") {
-    return {
-      authorized: true,
-      user: {
-        id: "dev-mock-admin-01",
-        email: "admin@neura.ai",
-        role: "admin",
-      },
-      status: 200,
-    };
-  }
-
+  // If configuration is missing, fail closed and provide a clear setup error
   return {
     authorized: false,
-    error: "Unauthorized: Supabase is unconfigured and production restrictions are active.",
-    status: 401,
+    error: "Admin authentication service is unconfigured. Supabase credentials and ADMIN_EMAILS (or ADMIN_API_KEY) must be configured in .env.local to access administrator features.",
+    status: 503,
   };
 }

@@ -541,11 +541,11 @@ export default function SignupPage() {
                 {isLoading ? (
                   <>
                     <Loader2 className="w-4 h-4 animate-spin text-[#EAF6F6]" aria-hidden="true" />
-                    <span>Allocating Workspace Credits...</span>
+                    <span>Creating Account...</span>
                   </>
                 ) : (
                   <>
-                    <span>Create Free Workspace</span>
+                    <span>Create Account</span>
                     <ArrowRight className="w-4 h-4 group-hover:translate-x-0.5 transition-transform" aria-hidden="true" />
                   </>
                 )}
@@ -605,7 +605,7 @@ export default function SignupPage() {
                 href="/login"
                 className="font-semibold text-[#0FA4AF] hover:text-[#AFDDE5] transition-colors underline-offset-4 hover:underline"
               >
-                Sign in to workspace
+                Sign in
               </Link>
             </div>
 

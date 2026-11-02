@@ -238,13 +238,30 @@ export default function GeneratePage() {
 
       if (!res.ok || !data.success) {
         const errMsg = data.job?.error || data.error || "Video generation failed.";
+        const errCode = data.job?.errorCode || data.code || "GENERATION_FAILED";
         setGenerationError(errMsg);
-        setGenerationErrorCode(data.job?.errorCode || data.code || "GENERATION_FAILED");
-        if (data.job?.jobId && typeof window !== "undefined") {
-          localStorage.setItem("neura_job_id", data.job.jobId);
+        setGenerationErrorCode(errCode);
+        if (typeof window !== "undefined") {
+          if (data.job?.jobId) {
+            localStorage.setItem("neura_job_id", data.job.jobId);
+          }
+          if (
+            errCode === "CREDITS_EXHAUSTED" ||
+            errCode === "HF_CREDITS_EXHAUSTED" ||
+            errCode === "PIXAZO_INSUFFICIENT_FUNDS" ||
+            res.status === 402
+          ) {
+            localStorage.setItem("neura_generation_error_code", "CREDITS_EXHAUSTED");
+          } else {
+            localStorage.setItem("neura_generation_error_code", errCode);
+          }
         }
         setIsCallingApi(false);
         return;
+      }
+
+      if (typeof window !== "undefined") {
+        localStorage.removeItem("neura_generation_error_code");
       }
 
       const jobId = data.job?.jobId;

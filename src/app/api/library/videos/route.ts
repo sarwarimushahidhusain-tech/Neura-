@@ -127,9 +127,10 @@ export async function POST(req: NextRequest) {
     );
   } catch (error) {
     const msg = error instanceof Error ? error.message : "Failed to create video record";
+    const status = msg.includes("unconfigured") ? 503 : 500;
     return NextResponse.json(
-      { success: false, error: msg, code: "CREATE_FAILED" },
-      { status: 500 }
+      { success: false, error: msg, code: status === 503 ? "DB_UNCONFIGURED" : "CREATE_FAILED" },
+      { status }
     );
   }
 }

@@ -2,6 +2,7 @@
  * NEURA PHASE 5 — VIDEO & THUMBNAIL UPLOAD ROUTE
  * POST /api/library/upload
  * Admin only: Securely uploads video or thumbnail file with binary validation.
+ * Videos are strictly stored in private Supabase Storage without public URLs.
  */
 
 import { NextRequest, NextResponse } from "next/server";
@@ -10,32 +11,41 @@ import {
   validateUploadedVideoFile,
   validateImageMagicBytes,
   sanitizeStorageFileName,
-  MAX_THUMBNAIL_BYTES,
-  ALLOWED_IMAGE_MIMES,
 } from "@/lib/library/validation";
-import { createClient as createServerSupabase } from "@/lib/supabase/server";
+import { LIBRARY_CONFIG } from "@/lib/library/config";
+import { createClient as createServerSupabase, createAdminClient } from "@/lib/supabase/server";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
-import fs from "node:fs/promises";
-import path from "node:path";
 
 export const dynamic = "force-dynamic";
 
 export async function POST(req: NextRequest) {
   try {
-    // 1. Enforce Admin Authorization
+    // 1. Enforce Server-Verified Admin Authorization
     const adminCheck = await verifyAdminRequest(req);
     if (!adminCheck.authorized) {
       return NextResponse.json(
         {
           success: false,
-          error: adminCheck.error || "Forbidden: Only administrators can upload video assets.",
+          error: adminCheck.error || "Forbidden: Only authorized administrators can upload video assets.",
           code: "FORBIDDEN",
         },
         { status: adminCheck.status || 403 }
       );
     }
 
-    // 2. Parse Multipart Form Data
+    // 2. Enforce Supabase Storage Configuration
+    if (!isSupabaseConfigured()) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: "Supabase Storage is unconfigured. Please configure NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY (and SUPABASE_SERVICE_ROLE_KEY) in .env.local to upload video assets.",
+          code: "STORAGE_UNCONFIGURED",
+        },
+        { status: 503 }
+      );
+    }
+
+    // 3. Parse Multipart Form Data
     const formData = await req.formData();
     const file = formData.get("file") as File | null;
     const uploadType = (formData.get("type") as string) || "video"; // "video" | "thumbnail"
@@ -50,7 +60,7 @@ export async function POST(req: NextRequest) {
     const arrayBuffer = await file.arrayBuffer();
     const buffer = new Uint8Array(arrayBuffer);
 
-    // 3. Validation by Upload Type
+    // 4. Strict Binary & MIME Validation
     if (uploadType === "video") {
       const videoValidation = validateUploadedVideoFile(buffer, file.type, file.size);
       if (!videoValidation.valid) {
@@ -65,7 +75,7 @@ export async function POST(req: NextRequest) {
       }
     } else {
       // Thumbnail validation
-      if (file.size > MAX_THUMBNAIL_BYTES) {
+      if (file.size > LIBRARY_CONFIG.MAX_THUMBNAIL_BYTES) {
         return NextResponse.json(
           {
             success: false,
@@ -76,7 +86,7 @@ export async function POST(req: NextRequest) {
         );
       }
 
-      if (!ALLOWED_IMAGE_MIMES.includes(file.type as (typeof ALLOWED_IMAGE_MIMES)[number])) {
+      if (!LIBRARY_CONFIG.ALLOWED_IMAGE_MIMES.includes(file.type as (typeof LIBRARY_CONFIG.ALLOWED_IMAGE_MIMES)[number])) {
         return NextResponse.json(
           {
             success: false,
@@ -100,42 +110,55 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // 4. Generate Safe Storage Filename
-    const bucket = uploadType === "video" ? "educational-videos" : "video-thumbnails";
+    // 5. Generate Safe Storage Filename
+    const isVideo = uploadType === "video";
+    const bucket = isVideo
+      ? LIBRARY_CONFIG.STORAGE_BUCKET_VIDEOS
+      : LIBRARY_CONFIG.STORAGE_BUCKET_THUMBNAILS;
+
     const safeFileName = sanitizeStorageFileName(file.name, uploadType);
     const storagePath = `${bucket}/${safeFileName}`;
 
-    // 5. Store File
-    let publicUrl = "";
+    // 6. Upload to Supabase Storage
+    const adminSupabase = createAdminClient();
+    const supabase = adminSupabase || (await createServerSupabase());
 
-    if (isSupabaseConfigured()) {
-      try {
-        const supabase = await createServerSupabase();
-        if (supabase) {
-          const { error: uploadError } = await supabase.storage
-            .from(bucket)
-            .upload(safeFileName, buffer, {
-              contentType: file.type,
-              upsert: true,
-            });
-
-          if (!uploadError) {
-            const { data } = supabase.storage.from(bucket).getPublicUrl(safeFileName);
-            publicUrl = data.publicUrl;
-          }
-        }
-      } catch {
-        // Fall back to local file storage below
-      }
+    if (!supabase) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: "Storage client could not be initialized.",
+          code: "STORAGE_CLIENT_ERROR",
+        },
+        { status: 500 }
+      );
     }
 
-    // Local file storage fallback (for offline dev environment)
-    if (!publicUrl) {
-      const uploadDir = path.join(process.cwd(), "public", "uploads", bucket);
-      await fs.mkdir(uploadDir, { recursive: true });
-      const localFilePath = path.join(uploadDir, safeFileName);
-      await fs.writeFile(localFilePath, Buffer.from(buffer));
-      publicUrl = `/uploads/${bucket}/${safeFileName}`;
+    const { error: uploadError } = await supabase.storage
+      .from(bucket)
+      .upload(safeFileName, buffer, {
+        contentType: file.type,
+        upsert: true,
+      });
+
+    if (uploadError) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: `Storage upload failed: ${uploadError.message}`,
+          code: "STORAGE_UPLOAD_ERROR",
+        },
+        { status: 500 }
+      );
+    }
+
+    // 7. URL Generation
+    // Videos: PRIVATE - do NOT generate getPublicUrl()
+    // Thumbnails: PUBLIC - getPublicUrl() is permitted
+    let publicUrl: string | null = null;
+    if (!isVideo) {
+      const { data } = supabase.storage.from(bucket).getPublicUrl(safeFileName);
+      publicUrl = data.publicUrl;
     }
 
     return NextResponse.json(

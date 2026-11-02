@@ -128,7 +128,8 @@ export async function POST(request: Request) {
 
     const isCreditError =
       jobResult.errorCode === "HF_CREDITS_EXHAUSTED" ||
-      jobResult.errorCode === "PIXAZO_INSUFFICIENT_FUNDS";
+      jobResult.errorCode === "PIXAZO_INSUFFICIENT_FUNDS" ||
+      jobResult.errorCode === "CREDITS_EXHAUSTED";
     const isAuthError =
       jobResult.errorCode === "PIXAZO_AUTH_FAILED" ||
       jobResult.errorCode === "PIXAZO_KEY_MISSING" ||
@@ -151,6 +152,16 @@ export async function POST(request: Request) {
     return NextResponse.json(
       {
         success: isJobAccepted,
+        code: isCreditError
+          ? "CREDITS_EXHAUSTED"
+          : isAuthError
+          ? "AUTH_FAILED"
+          : !isJobAccepted
+          ? "GENERATION_FAILED"
+          : undefined,
+        error: isCreditError
+          ? "You've reached your current video-generation limit. Upgrade to NEURA Pro to access the additional generation capacity included in your plan."
+          : jobResult.error,
         job: jobResult,
         costEstimate: jobResult.costEstimate,
         creditWarning: isCreditError

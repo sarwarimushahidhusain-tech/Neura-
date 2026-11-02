@@ -3,7 +3,6 @@
 import { useState, useMemo, useEffect } from "react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import {
   Select,
@@ -13,7 +12,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
-import { Search, SlidersHorizontal, PlayCircle, Clock, Trophy, Database, Sparkles } from "lucide-react";
+import { Search, SlidersHorizontal, PlayCircle, Clock, Database, Sparkles, Video, ArrowRight } from "lucide-react";
 import type { Project } from "@/types";
 import { getProjects, PUBLIC_SHOWCASE_PROJECTS } from "@/lib/projects";
 
@@ -47,9 +46,7 @@ export default function ProjectsPage() {
 
   const filtered = useMemo(() => {
     let list = projectsList.filter((p) => {
-      const matchSearch = p.title
-        .toLowerCase()
-        .includes(search.toLowerCase());
+      const matchSearch = p.title.toLowerCase().includes(search.toLowerCase());
       const matchCat = category === "All" || p.category === category;
       return matchSearch && matchCat;
     });
@@ -63,193 +60,185 @@ export default function ProjectsPage() {
   const renderThumbnail = (project: Project) => {
     if (project.category === "Science") {
       return (
-        <div className="absolute inset-0 bg-gradient-to-br from-red-900 to-slate-900 flex items-center justify-center overflow-hidden">
-          <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(220,38,38,0.2),transparent_70%)]" />
-          <div className="w-24 h-24 border-4 border-red-500/30 rounded-full animate-pulse" />
-          <div className="absolute w-32 h-16 bg-red-600/20 blur-xl" />
+        <div className="absolute inset-0 bg-gradient-to-br from-[#1F080C] to-[#0B101C] flex items-center justify-center overflow-hidden">
+          <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(239,68,68,0.2),transparent_70%)]" />
+          <div className="w-24 h-24 border-2 border-red-500/30 rounded-full animate-pulse" />
+          <div className="absolute w-32 h-16 bg-red-600/10 blur-xl" />
         </div>
       );
     }
     if (project.category === "Physics") {
       return (
-        <div className="absolute inset-0 bg-gradient-to-br from-indigo-900 to-slate-900 flex items-center justify-center overflow-hidden">
-          <div className="w-40 h-px bg-indigo-500/50 absolute rotate-45" />
-          <div className="w-40 h-px bg-indigo-500/50 absolute -rotate-45" />
-          <div className="w-12 h-12 bg-white/10 backdrop-blur-md rounded-full shadow-[0_0_20px_rgba(99,102,241,0.4)]" />
+        <div className="absolute inset-0 bg-gradient-to-br from-[#091528] to-[#0B101C] flex items-center justify-center overflow-hidden">
+          <div className="w-40 h-px bg-[#00D4E8]/40 absolute rotate-45" />
+          <div className="w-40 h-px bg-[#00D4E8]/40 absolute -rotate-45" />
+          <div className="w-12 h-12 bg-white/10 backdrop-blur-md rounded-full shadow-[0_0_20px_rgba(0,212,232,0.4)]" />
         </div>
       );
     }
     if (project.category === "Biology") {
       return (
-        <div className="absolute inset-0 bg-gradient-to-br from-emerald-900 to-slate-900 flex items-center justify-center overflow-hidden">
-          <div className="w-full h-full opacity-30" style={{ backgroundImage: 'radial-gradient(circle at 10px 10px, rgba(16, 185, 129, 0.4) 2px, transparent 0)', backgroundSize: '20px 20px' }} />
-          <div className="w-32 h-12 bg-emerald-500/20 rounded-full blur-xl absolute" />
-          <div className="w-20 h-20 border-2 border-emerald-400/40 rounded-full" />
+        <div className="absolute inset-0 bg-gradient-to-br from-[#061814] to-[#0B101C] flex items-center justify-center overflow-hidden">
+          <div className="w-32 h-12 bg-[#00C9B7]/15 rounded-full blur-xl absolute" />
+          <div className="w-20 h-20 border border-[#00C9B7]/40 rounded-full" />
         </div>
       );
     }
-    // Default creative placeholder
     return (
-      <div className="absolute inset-0 bg-gradient-to-br from-purple-900 to-slate-900 flex items-center justify-center overflow-hidden">
-        <div className="absolute inset-0 bg-[conic-gradient(from_90deg_at_50%_50%,rgba(168,85,247,0.2),rgba(59,130,246,0.2),rgba(168,85,247,0.2))]" />
+      <div className="absolute inset-0 bg-gradient-to-br from-[#180C26] to-[#0B101C] flex items-center justify-center overflow-hidden">
+        <div className="w-28 h-28 border border-[#9565F5]/30 rounded-full" />
       </div>
     );
   };
 
   return (
-    <div className="container mx-auto px-4 py-8 max-w-7xl bg-background">
-      {/* Header */}
-      <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 mb-10 animate-in fade-in slide-in-from-bottom-4 duration-500">
-        <div>
-          <div className="flex items-center gap-3 mb-2">
-            <h1 className="text-4xl font-bold tracking-tight text-foreground">My Projects</h1>
-            {isLiveDb ? (
-              <Badge variant="outline" className="text-xs border-primary/30 text-primary gap-1">
-                <Database className="w-3 h-3" />
-                <span>Supabase RLS Protected</span>
-              </Badge>
-            ) : (
-              <Badge variant="secondary" className="text-xs text-muted-foreground gap-1">
-                <Sparkles className="w-3 h-3 text-primary" />
-                <span>Showcase Gallery</span>
-              </Badge>
-            )}
+    <div className="min-h-screen bg-[#050810] text-[#F5F7FC] neura-grid pb-24">
+      <div className="container mx-auto px-4 md:px-8 py-10 max-w-7xl relative z-10">
+        
+        {/* Header */}
+        <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 mb-10">
+          <div>
+            <div className="flex items-center gap-3 mb-2">
+              <h1 className="text-3xl sm:text-4xl font-extrabold tracking-tight text-[#F5F7FC]">
+                My Projects
+              </h1>
+              {isLiveDb ? (
+                <Badge variant="outline" className="text-xs border-[#00D4E8]/30 bg-[#00D4E8]/5 text-[#00D4E8] gap-1.5 font-mono">
+                  <Database className="w-3 h-3" />
+                  <span>Supabase RLS</span>
+                </Badge>
+              ) : (
+                <Badge variant="outline" className="text-xs border-[#1B2635] bg-[#0B101C] text-[#9AA8BC] gap-1.5 font-mono">
+                  <Sparkles className="w-3 h-3 text-[#00D4E8]" />
+                  <span>Showcase Gallery</span>
+                </Badge>
+              )}
+            </div>
+            <p className="text-[#9AA8BC] text-sm sm:text-base">
+              Your generated visual stories, lessons, and blueprints.
+            </p>
           </div>
-          <p className="text-muted-foreground text-lg">Your generated visual stories.</p>
-        </div>
-        <Link href="/create">
-          <Button className="bg-primary hover:bg-primary/90 text-primary-foreground shadow-md hover:shadow-lg transition-all duration-200 hover:-translate-y-0.5">
-            Create New Video
-          </Button>
-        </Link>
-      </div>
 
-      {/* Filter bar */}
-      <div className="flex flex-col sm:flex-row gap-4 mb-10 animate-in fade-in slide-in-from-bottom-4 duration-500 delay-100 p-4 bg-card rounded-2xl border border-border shadow-sm">
-        <div className="relative flex-1">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
-          <Input
-            placeholder="Search projects…"
-            className="pl-9 bg-muted/50 border-transparent hover:bg-muted focus-visible:bg-background focus-visible:border-primary transition-all duration-200"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            aria-label="Search projects"
-          />
+          <Link href="/create">
+            <Button className="bg-gradient-to-r from-[#00D4E8] to-[#00C9B7] hover:opacity-95 text-[#050810] font-semibold text-xs px-5 py-2.5 rounded-full shadow-[0_0_20px_rgba(0,212,232,0.35)] transition-all duration-200 gap-2 flex items-center">
+              <Video className="w-3.5 h-3.5" />
+              Create New Video
+            </Button>
+          </Link>
         </div>
 
-        <div className="flex gap-3">
-          <Select value={category} onValueChange={(v) => setCategory(v || "All")}>
-            <SelectTrigger
-              className="w-[160px] bg-muted/50 border-transparent hover:bg-muted focus:bg-background transition-all duration-200"
-              aria-label="Filter by category"
-            >
-              <SlidersHorizontal className="w-3.5 h-3.5 mr-2 text-muted-foreground" />
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {CATEGORIES.map((c) => (
-                <SelectItem key={c} value={c}>
-                  {c === "All" ? "All Categories" : c}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+        {/* Filter bar */}
+        <div className="flex flex-col sm:flex-row gap-4 mb-10 p-4 bg-[#0B101C]/90 rounded-2xl border border-[#1B2635] shadow-[0_4px_30px_rgba(0,0,0,0.4)] backdrop-blur-md">
+          <div className="relative flex-1">
+            <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-[#9AA8BC] pointer-events-none" />
+            <Input
+              placeholder="Search projects..."
+              className="pl-10 bg-[#101625] border-[#1B2635] text-[#F5F7FC] placeholder:text-[#9AA8BC]/60 focus-visible:border-[#00D4E8] rounded-xl text-xs h-10 transition-colors"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              aria-label="Search projects"
+            />
+          </div>
 
-          <Select value={sort} onValueChange={(v) => setSort(v || "newest")}>
-            <SelectTrigger
-              className="w-[160px] bg-muted/50 border-transparent hover:bg-muted focus:bg-background transition-all duration-200"
-              aria-label="Sort projects"
-            >
-              <Clock className="w-3.5 h-3.5 mr-2 text-muted-foreground" />
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {SORT_OPTIONS.map(({ value, label }) => (
-                <SelectItem key={value} value={value}>
-                  {label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          <div className="flex gap-3">
+            <Select value={category} onValueChange={(v) => setCategory(v || "All")}>
+              <SelectTrigger
+                className="w-[160px] bg-[#101625] border-[#1B2635] text-xs text-[#F5F7FC] rounded-xl h-10 focus:ring-[#00D4E8]"
+                aria-label="Filter by category"
+              >
+                <SlidersHorizontal className="w-3.5 h-3.5 mr-2 text-[#9AA8BC]" />
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent className="bg-[#0B101C] border-[#1B2635] text-[#F5F7FC] text-xs">
+                {CATEGORIES.map((c) => (
+                  <SelectItem key={c} value={c} className="hover:bg-[#101625] focus:bg-[#101625]">
+                    {c === "All" ? "All Categories" : c}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+
+            <Select value={sort} onValueChange={(v) => setSort(v || "newest")}>
+              <SelectTrigger
+                className="w-[160px] bg-[#101625] border-[#1B2635] text-xs text-[#F5F7FC] rounded-xl h-10 focus:ring-[#00D4E8]"
+                aria-label="Sort projects"
+              >
+                <Clock className="w-3.5 h-3.5 mr-2 text-[#9AA8BC]" />
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent className="bg-[#0B101C] border-[#1B2635] text-[#F5F7FC] text-xs">
+                {SORT_OPTIONS.map(({ value, label }) => (
+                  <SelectItem key={value} value={value} className="hover:bg-[#101625] focus:bg-[#101625]">
+                    {label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
         </div>
-      </div>
 
-      {/* Project grid */}
-      {filtered.length > 0 ? (
-        <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-8">
-          {filtered.map((project, i) => (
-            <Card
-              key={project.id}
-              className={`
-                overflow-hidden group bg-card border-border shadow-sm
-                hover:shadow-xl hover:border-primary/30
-                card-lift transition-all duration-300
-                animate-in fade-in slide-in-from-bottom-4
-              `}
-              style={{ animationDelay: `${i * 100}ms` }}
-            >
-              {/* Thumbnail Area */}
-              <div className="aspect-video relative overflow-hidden bg-slate-900">
-                {/* CSS Placeholder */}
-                {renderThumbnail(project)}
+        {/* Project grid */}
+        {filtered.length > 0 ? (
+          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {filtered.map((project) => (
+              <div
+                key={project.id}
+                className="rounded-2xl overflow-hidden group bg-[#0B101C] border border-[#1B2635] hover:border-[#00D4E8]/40 shadow-[0_4px_24px_rgba(0,0,0,0.5)] hover:shadow-[0_0_30px_rgba(0,212,232,0.1)] transition-all duration-300 flex flex-col justify-between"
+              >
+                <div>
+                  {/* Thumbnail Area */}
+                  <div className="aspect-video relative overflow-hidden bg-[#050810]">
+                    {renderThumbnail(project)}
 
-                {/* Hover overlay */}
-                <div className="absolute inset-0 bg-black/20 group-hover:bg-black/40 transition-colors duration-300" />
+                    <div className="absolute inset-0 bg-black/30 group-hover:bg-black/50 transition-colors duration-300" />
 
-                <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-300 transform scale-95 group-hover:scale-100">
-                  <div className="h-14 w-14 rounded-full bg-white/20 backdrop-blur-md flex items-center justify-center border border-white/30 shadow-lg">
-                    <PlayCircle className="w-8 h-8 text-white ml-1" />
+                    <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-300">
+                      <div className="h-12 w-12 rounded-full bg-[#00D4E8]/20 backdrop-blur-md flex items-center justify-center border border-[#00D4E8]/50 shadow-[0_0_20px_rgba(0,212,232,0.5)]">
+                        <PlayCircle className="w-7 h-7 text-[#00D4E8] ml-0.5" />
+                      </div>
+                    </div>
+
+                    <div className="absolute top-3 left-3 flex gap-2">
+                      <span className="bg-[#050810]/80 backdrop-blur-md border border-[#1B2635] text-[#F5F7FC] text-[10px] font-mono px-2.5 py-0.5 rounded-full">
+                        {project.category}
+                      </span>
+                      {project.jobStatus === "awaiting_video_provider" && (
+                        <span className="border border-amber-500/40 text-amber-300 bg-[#050810]/80 text-[10px] font-mono px-2.5 py-0.5 rounded-full">
+                          Awaiting Provider
+                        </span>
+                      )}
+                      {project.jobStatus === "completed" && (
+                        <span className="bg-emerald-500/20 border border-emerald-500/40 text-emerald-300 text-[10px] font-mono px-2.5 py-0.5 rounded-full">
+                          Ready
+                        </span>
+                      )}
+                    </div>
+
+                    <div className="absolute bottom-2.5 right-3">
+                      <div className="flex items-center gap-1 text-[10px] font-mono bg-[#050810]/80 px-2 py-0.5 rounded border border-[#1B2635] text-[#00D4E8]">
+                        <span>{project.score}</span>
+                        <span className="text-[#9AA8BC]">/100</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Info */}
+                  <div className="p-5">
+                    <h3 className="font-bold text-base line-clamp-1 mb-1.5 group-hover:text-[#00D4E8] transition-colors duration-200 text-[#F5F7FC]">
+                      {project.title}
+                    </h3>
+                    <p className="text-xs text-[#9AA8BC] flex items-center gap-2 mb-4 font-mono">
+                      <span>{project.date}</span>
+                      <span aria-hidden>·</span>
+                      <span className="text-[#9565F5]">{project.model}</span>
+                    </p>
                   </div>
                 </div>
 
-                <div className="absolute top-3 left-3 flex gap-2">
-                  <Badge className="bg-black/60 backdrop-blur-md border-white/10 text-white text-[10px] font-medium tracking-wide">
-                    {project.category}
-                  </Badge>
-                  {project.jobStatus === "awaiting_video_provider" && (
-                    <Badge variant="outline" className="border-amber-500/40 text-amber-300 bg-black/60 text-[10px]">
-                      Awaiting Video Provider
-                    </Badge>
-                  )}
-                  {project.jobStatus === "completed" && (
-                    <Badge className="bg-emerald-600/80 text-white text-[10px]">
-                      Ready
-                    </Badge>
-                  )}
-                </div>
-
-                <div className="absolute bottom-3 right-3">
-                  <div className="flex items-center gap-1.5 text-[10px] font-mono bg-black/70 px-2.5 py-1 rounded-md backdrop-blur-md border border-white/10 shadow-sm">
-                    {project.score >= 90 && (
-                      <Trophy className="h-3 w-3 text-yellow-400" />
-                    )}
-                    <span className={project.score >= 90 ? "text-white" : "text-slate-300"}>
-                      {project.score}
-                    </span>
-                    <span className="text-slate-400">/100</span>
-                  </div>
-                </div>
-              </div>
-
-              <CardContent className="p-5">
-                <div className="mb-4">
-                  <h3 className="font-bold text-lg line-clamp-1 mb-1.5 group-hover:text-primary transition-colors duration-200 text-foreground">
-                    {project.title}
-                  </h3>
-                  <p className="text-xs text-muted-foreground flex items-center gap-2">
-                    <span>{project.date}</span>
-                    <span aria-hidden>·</span>
-                    <span className="font-medium">{project.model}</span>
-                  </p>
-                </div>
-
-                <div className="flex items-center justify-between">
-                  <Badge
-                    variant="outline"
-                    className="border-border text-muted-foreground bg-muted text-[10px] font-medium"
-                  >
+                <div className="px-5 pb-5 pt-0 flex items-center justify-between border-t border-[#1B2635]/60 mt-auto">
+                  <span className="text-[10px] font-mono text-[#9AA8BC] uppercase tracking-wide">
                     {project.style}
-                  </Badge>
+                  </span>
                   <Link
                     href="/result"
                     onClick={() => {
@@ -260,38 +249,34 @@ export default function ProjectsPage() {
                         }
                       }
                     }}
+                    className="inline-flex items-center gap-1 text-xs font-semibold text-[#00D4E8] hover:text-[#00C9B7] transition-colors py-1 px-2"
                   >
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="h-8 px-3 text-xs text-primary hover:bg-primary/10 transition-colors duration-200"
-                    >
-                      View Details
-                    </Button>
+                    View Details <ArrowRight className="w-3 h-3" />
                   </Link>
                 </div>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
-      ) : (
-        <div className="text-center py-32 bg-card border border-border rounded-3xl shadow-sm animate-in fade-in duration-300">
-          <p className="text-muted-foreground mb-6 text-lg">
-            No projects match your criteria.
-          </p>
-          <Button
-            variant="outline"
-            className="border-border hover:bg-muted"
-            onClick={() => {
-              setSearch("");
-              setCategory("All");
-              setSort("newest");
-            }}
-          >
-            Clear Filters
-          </Button>
-        </div>
-      )}
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="text-center py-28 bg-[#0B101C] border border-[#1B2635] rounded-3xl shadow-sm">
+            <p className="text-[#9AA8BC] mb-5 text-base">
+              No projects match your criteria.
+            </p>
+            <Button
+              variant="outline"
+              className="border-[#1B2635] bg-[#101625] text-xs text-[#F5F7FC] hover:border-[#00D4E8]/40"
+              onClick={() => {
+                setSearch("");
+                setCategory("All");
+                setSort("newest");
+              }}
+            >
+              Clear Filters
+            </Button>
+          </div>
+        )}
+
+      </div>
     </div>
   );
 }

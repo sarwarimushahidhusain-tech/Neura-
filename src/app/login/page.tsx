@@ -134,7 +134,7 @@ export default function LoginPage() {
 
       // Safe relative redirect validation to prevent open-redirect vulnerabilities
       const urlParams = typeof window !== "undefined" ? new URLSearchParams(window.location.search) : null;
-      const targetParam = urlParams?.get("redirect");
+      const targetParam = urlParams?.get("redirect") || urlParams?.get("next");
       const safeTarget = sanitizeRedirectUrl(targetParam, "/projects");
 
       setTimeout(() => {
@@ -582,15 +582,32 @@ export default function LoginPage() {
               </div>
             </div>
 
-            {/* Bottom Navigation */}
-            <div className="mt-8 pt-5 border-t border-[#0FA4AF]/20 text-center text-xs text-[#A7C4C6]">
-              Don&apos;t have an account yet?{" "}
-              <Link
-                href="/signup"
-                className="font-semibold text-[#0FA4AF] hover:text-[#AFDDE5] transition-colors underline-offset-4 hover:underline"
-              >
-                Create your workspace
+            {/* Sign Up / Create Account Section */}
+            <div className="mt-8 pt-6 border-t border-[#0FA4AF]/20 text-center space-y-3.5">
+              <div className="text-xs text-[#A7C4C6]">
+                Don&apos;t have an account?
+              </div>
+
+              <Link href="/signup" className="block">
+                <button
+                  type="button"
+                  className="w-full py-2.5 px-4 rounded-xl font-medium text-xs text-[#EAF6F6] bg-[#0B1416]/80 hover:bg-[#0B1416] border border-[#0FA4AF]/35 hover:border-[#0FA4AF]/70 hover:shadow-[0_0_15px_rgba(15,164,175,0.25)] transition-all duration-200 flex items-center justify-center gap-2 cursor-pointer focus:outline-none focus:ring-1 focus:ring-[#0FA4AF]"
+                >
+                  <Sparkles className="w-3.5 h-3.5 text-[#0FA4AF]" />
+                  <span>Create Account</span>
+                  <ArrowRight className="w-3.5 h-3.5 text-[#0FA4AF]" />
+                </button>
               </Link>
+
+              <div className="text-[11px] text-[#A7C4C6]/80">
+                New to NEURA?{" "}
+                <Link
+                  href="/signup"
+                  className="font-semibold text-[#0FA4AF] hover:text-[#AFDDE5] transition-colors underline-offset-4 hover:underline"
+                >
+                  Sign Up to create your workspace
+                </Link>
+              </div>
             </div>
 
           </div>

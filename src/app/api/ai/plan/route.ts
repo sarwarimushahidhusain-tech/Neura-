@@ -12,6 +12,7 @@ import {
   generateEducationalPlanWithHuggingFace,
   HuggingFaceConfigError,
   HuggingFaceError,
+  isHuggingFaceConfigured,
 } from "@/lib/ai/huggingface";
 import { buildMasterPrompt } from "@/lib/ai/prompt-builder";
 
@@ -53,7 +54,7 @@ export async function POST(request: Request) {
     const validatedInput = validateEducationalPlanInput(body);
 
     // 3. Call AI Planning Service
-    // Priority: OpenRouter → HuggingFace → config error
+    // Primary: OpenRouter for lesson planning and prompt generation
     let plan;
     let modelUsed: string;
 
@@ -61,11 +62,15 @@ export async function POST(request: Request) {
       const result = await generateEducationalPlanWithOpenRouter(validatedInput);
       plan = result.plan;
       modelUsed = result.modelUsed;
-    } else {
-      // Fallback to HuggingFace
+    } else if (isHuggingFaceConfigured()) {
+      // Secondary fallback if user configured HF
       const result = await generateEducationalPlanWithHuggingFace(validatedInput);
       plan = result.plan;
       modelUsed = result.modelUsed;
+    } else {
+      throw new OpenRouterConfigError(
+        "OpenRouter API key is not configured. Please add OPENROUTER_API_KEY to your .env.local file to generate prompts."
+      );
     }
 
     // 4. Build Master Prompt
@@ -113,6 +118,7 @@ export async function POST(request: Request) {
           success: false,
           error: err.message,
           code: err.code,
+          metadata: err.metadata,
         },
         { status: err.statusCode }
       );

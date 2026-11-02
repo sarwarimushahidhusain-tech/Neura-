@@ -349,14 +349,26 @@ export async function signupWithCredentials(
     });
 
     if (error) {
-      if (error.message.includes("already registered")) {
+      const errMsg = error.message.toLowerCase();
+      if (errMsg.includes("already registered") || errMsg.includes("already exists") || errMsg.includes("duplicate")) {
         throw new Error("An account with this email address already exists. Please sign in instead.");
+      }
+      if (errMsg.includes("weak") || errMsg.includes("password should be")) {
+        throw new Error("Password does not meet security requirements. Please choose a stronger password.");
+      }
+      if (errMsg.includes("rate limit") || errMsg.includes("over_email_send_rate_limit")) {
+        throw new Error("Too many requests. Please wait a moment and try again.");
       }
       throw new Error(error.message || "Registration failed. Please try again.");
     }
 
     if (!data.user) {
       throw new Error("Failed to create user account.");
+    }
+
+    // In Supabase, if a user already exists with email confirmation enabled, identities array is returned empty
+    if (Array.isArray(data.user.identities) && data.user.identities.length === 0) {
+      throw new Error("An account with this email address already exists. Please sign in instead.");
     }
 
     const isEmailConfirmationPending = !data.session;
